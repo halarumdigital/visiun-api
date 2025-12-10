@@ -1,0 +1,822 @@
+import { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { prisma } from '../config/database.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { rbac } from '../middleware/rbac.js';
+import { auditService, AuditActions } from '../middleware/audit.js';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors.js';
+import { realtimeService } from '../websocket/index.js';
+import { getContext } from '../utils/context.js';
+
+// Swagger Schemas
+const motorcycleStatusEnum = ['active', 'alugada', 'relocada', 'manutencao', 'recolhida', 'indisponivel_rastreador', 'indisponivel_emplacamento', 'inadimplente', 'renegociado', 'furto_roubo'];
+
+const motorcycleResponseSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    placa: { type: 'string' },
+    chassi: { type: 'string', nullable: true },
+    renavam: { type: 'string', nullable: true },
+    modelo: { type: 'string' },
+    marca: { type: 'string', nullable: true },
+    ano: { type: 'number', nullable: true },
+    cor: { type: 'string', nullable: true },
+    quilometragem: { type: 'number', nullable: true },
+    codigo_cs: { type: 'string', nullable: true },
+    tipo: { type: 'string', enum: ['Nova', 'Usada'], nullable: true },
+    valor_semanal: { type: 'number', nullable: true },
+    franqueado: { type: 'string', nullable: true },
+    doc_moto: { type: 'string', format: 'uri', nullable: true },
+    doc_taxa_intermediacao: { type: 'string', format: 'uri', nullable: true },
+    observacoes: { type: 'string', nullable: true },
+    status: { type: 'string', enum: motorcycleStatusEnum },
+    city_id: { type: 'string', format: 'uuid', nullable: true },
+    franchisee_id: { type: 'string', format: 'uuid', nullable: true },
+    data_criacao: { type: 'string', format: 'date-time', nullable: true },
+    data_ultima_mov: { type: 'string', format: 'date-time', nullable: true },
+    created_at: { type: 'string', format: 'date-time' },
+    updated_at: { type: 'string', format: 'date-time' },
+    city: { type: 'object', nullable: true },
+    franchisee: { type: 'object', nullable: true },
+  },
+};
+
+const movementResponseSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    motorcycle_id: { type: 'string', format: 'uuid' },
+    previous_status: { type: 'string' },
+    new_status: { type: 'string' },
+    reason: { type: 'string', nullable: true },
+    created_by: { type: 'string', format: 'uuid', nullable: true },
+    created_at: { type: 'string', format: 'date-time' },
+  },
+};
+
+const paginationSchema = {
+  type: 'object',
+  properties: {
+    total: { type: 'number' },
+    page: { type: 'number' },
+    limit: { type: 'number' },
+    totalPages: { type: 'number' },
+  },
+};
+
+const errorResponseSchema = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean', enum: [false] },
+    error: { type: 'string' },
+    code: { type: 'string' },
+  },
+};
+
+// Schemas de validação
+const createMotorcycleSchema = z.object({
+  placa: z.string().min(7, 'Placa inválida').max(8),
+  chassi: z.string().optional().nullable(),
+  renavam: z.string().optional().nullable(),
+  modelo: z.string().min(1, 'Modelo é obrigatório'),
+  marca: z.string().optional().nullable(),
+  ano: z.number().int().min(1900).max(2100).optional().nullable(),
+  cor: z.string().optional().nullable(),
+  quilometragem: z.number().int().min(0).optional().nullable(),
+  codigo_cs: z.string().optional().nullable(),
+  tipo: z.enum(['Nova', 'Usada']).optional().nullable(),
+  valor_semanal: z.number().positive().optional().nullable(),
+  city_id: z.string().uuid().optional().nullable(),
+  franchisee_id: z.string().uuid().optional().nullable(),
+  franqueado: z.string().optional().nullable(),
+  doc_moto: z.string().url().optional().nullable(),
+  doc_taxa_intermediacao: z.string().url().optional().nullable(),
+  observacoes: z.string().optional().nullable(),
+});
+
+const updateMotorcycleSchema = createMotorcycleSchema.partial().extend({
+  status: z.enum([
+    'active', 'alugada', 'relocada', 'manutencao', 'recolhida',
+    'indisponivel_rastreador', 'indisponivel_emplacamento',
+    'inadimplente', 'renegociado', 'furto_roubo'
+  ]).optional(),
+});
+
+const querySchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  search: z.string().optional(),
+  status: z.enum([
+    'active', 'alugada', 'relocada', 'manutencao', 'recolhida',
+    'indisponivel_rastreador', 'indisponivel_emplacamento',
+    'inadimplente', 'renegociado', 'furto_roubo'
+  ]).optional(),
+  franchisee_id: z.string().uuid().optional(),
+  city_id: z.string().uuid().optional(),
+  marca: z.string().optional(),
+  modelo: z.string().optional(),
+  orderBy: z.enum(['placa', 'modelo', 'created_at', 'data_ultima_mov', 'status']).default('created_at'),
+  orderDir: z.enum(['asc', 'desc']).default('desc'),
+});
+
+const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
+  /**
+   * GET /api/motorcycles
+   * Listar motocicletas
+   */
+  app.get('/', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar motocicletas com filtros e paginação',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'number', minimum: 1, default: 1, description: 'Página atual' },
+          limit: { type: 'number', minimum: 1, maximum: 100, default: 20, description: 'Itens por página' },
+          search: { type: 'string', description: 'Busca por placa, modelo ou chassi' },
+          status: { type: 'string', enum: motorcycleStatusEnum, description: 'Status da motocicleta' },
+          franchisee_id: { type: 'string', format: 'uuid', description: 'ID do franqueado' },
+          city_id: { type: 'string', format: 'uuid', description: 'ID da cidade' },
+          marca: { type: 'string', description: 'Filtro por marca' },
+          modelo: { type: 'string', description: 'Filtro por modelo' },
+          orderBy: { type: 'string', enum: ['placa', 'modelo', 'created_at', 'data_ultima_mov', 'status'], default: 'created_at' },
+          orderDir: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'array', items: motorcycleResponseSchema },
+            pagination: paginationSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const query = querySchema.safeParse(request.query);
+    if (!query.success) {
+      throw new BadRequestError(query.error.errors[0].message);
+    }
+
+    const {
+      page, limit, search, status, franchisee_id,
+      city_id, marca, modelo, orderBy, orderDir
+    } = query.data;
+
+    const context = getContext(request);
+    const where: any = {};
+
+    // Aplicar filtro baseado no role
+    const roleFilter = context.getFranchiseeFilter();
+    Object.assign(where, roleFilter);
+
+    // Filtros adicionais
+    if (search) {
+      where.OR = [
+        { placa: { contains: search, mode: 'insensitive' } },
+        { modelo: { contains: search, mode: 'insensitive' } },
+        { chassi: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (status) where.status = status;
+    if (franchisee_id) where.franchisee_id = franchisee_id;
+    if (city_id) where.city_id = city_id;
+    if (marca) where.marca = { contains: marca, mode: 'insensitive' };
+    if (modelo) where.modelo = { contains: modelo, mode: 'insensitive' };
+
+    const [motorcycles, total] = await Promise.all([
+      prisma.motorcycle.findMany({
+        where,
+        include: {
+          city: true,
+          franchisee: true,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { [orderBy]: orderDir },
+      }),
+      prisma.motorcycle.count({ where }),
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      data: motorcycles,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  });
+
+  /**
+   * GET /api/motorcycles/:id
+   * Obter motocicleta por ID
+   */
+  app.get('/:id', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Obter motocicleta por ID',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: motorcycleResponseSchema,
+          },
+        },
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const context = getContext(request);
+
+    const motorcycle = await prisma.motorcycle.findUnique({
+      where: { id },
+      include: {
+        city: true,
+        franchisee: true,
+        rentals: {
+          where: { status: 'active' },
+          include: { client: true },
+        },
+        movements: {
+          orderBy: { created_at: 'desc' },
+          take: 10,
+        },
+      },
+    });
+
+    if (!motorcycle) {
+      throw new NotFoundError('Motocicleta não encontrada');
+    }
+
+    // Verificar permissão
+    if (!context.isMasterOrAdmin()) {
+      if (context.isRegional() && motorcycle.city_id !== context.cityId) {
+        throw new ForbiddenError('Sem permissão para acessar esta motocicleta');
+      }
+      if (context.isFranchisee() && motorcycle.franchisee_id !== context.franchiseeId) {
+        throw new ForbiddenError('Sem permissão para acessar esta motocicleta');
+      }
+    }
+
+    return reply.status(200).send({
+      success: true,
+      data: motorcycle,
+    });
+  });
+
+  /**
+   * POST /api/motorcycles
+   * Criar motocicleta
+   */
+  app.post('/', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Criar nova motocicleta',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['placa', 'modelo'],
+        properties: {
+          placa: { type: 'string', minLength: 7, maxLength: 8, description: 'Placa da motocicleta' },
+          chassi: { type: 'string', description: 'Número do chassi' },
+          renavam: { type: 'string', description: 'Número do RENAVAM' },
+          modelo: { type: 'string', minLength: 1, description: 'Modelo da motocicleta' },
+          marca: { type: 'string', description: 'Marca da motocicleta' },
+          ano: { type: 'number', minimum: 1900, maximum: 2100, description: 'Ano de fabricação' },
+          cor: { type: 'string', description: 'Cor' },
+          quilometragem: { type: 'number', minimum: 0, description: 'Quilometragem atual' },
+          codigo_cs: { type: 'string', description: 'Código CS' },
+          tipo: { type: 'string', enum: ['Nova', 'Usada'], description: 'Tipo da motocicleta' },
+          valor_semanal: { type: 'number', minimum: 0, description: 'Valor semanal' },
+          city_id: { type: 'string', format: 'uuid', description: 'ID da cidade' },
+          franchisee_id: { type: 'string', format: 'uuid', description: 'ID do franqueado' },
+          franqueado: { type: 'string', description: 'Nome do franqueado' },
+          doc_moto: { type: 'string', format: 'uri', description: 'URL do documento da moto' },
+          doc_taxa_intermediacao: { type: 'string', format: 'uri', description: 'URL do documento de taxa de intermediação' },
+          observacoes: { type: 'string', description: 'Observações' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: motorcycleResponseSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = createMotorcycleSchema.safeParse(request.body);
+    if (!body.success) {
+      throw new BadRequestError(body.error.errors[0].message);
+    }
+
+    const data = body.data;
+    const context = getContext(request);
+
+    // Se for franqueado, forçar franchisee_id
+    if (context.isFranchisee()) {
+      data.franchisee_id = context.franchiseeId;
+      data.city_id = context.cityId;
+    }
+
+    // Verificar se placa já existe
+    const existingMoto = await prisma.motorcycle.findUnique({
+      where: { placa: data.placa.toUpperCase() },
+    });
+
+    if (existingMoto) {
+      throw new BadRequestError('Placa já cadastrada');
+    }
+
+    const motorcycle = await prisma.motorcycle.create({
+      data: {
+        placa: data.placa.toUpperCase(),
+        chassi: data.chassi,
+        renavam: data.renavam,
+        modelo: data.modelo,
+        marca: data.marca,
+        ano: data.ano,
+        cor: data.cor,
+        quilometragem: data.quilometragem,
+        codigo_cs: data.codigo_cs,
+        tipo: data.tipo,
+        valor_semanal: data.valor_semanal,
+        franqueado: data.franqueado,
+        doc_moto: data.doc_moto,
+        doc_taxa_intermediacao: data.doc_taxa_intermediacao,
+        observacoes: data.observacoes,
+        city_id: data.city_id,
+        franchisee_id: data.franchisee_id,
+        status: 'active',
+        data_criacao: new Date(),
+      } as any,
+      include: {
+        city: true,
+        franchisee: true,
+      },
+    });
+
+    await auditService.logFromRequest(
+      request,
+      AuditActions.MOTORCYCLE_CREATE,
+      'motorcycle',
+      motorcycle.id,
+      undefined,
+      { placa: motorcycle.placa, modelo: motorcycle.modelo }
+    );
+
+    return reply.status(201).send({
+      success: true,
+      data: motorcycle,
+    });
+  });
+
+  /**
+   * PUT /api/motorcycles/:id
+   * Atualizar motocicleta
+   */
+  app.put('/:id', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Atualizar motocicleta',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+        },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          placa: { type: 'string', minLength: 7, maxLength: 8 },
+          chassi: { type: 'string' },
+          renavam: { type: 'string' },
+          modelo: { type: 'string', minLength: 1 },
+          marca: { type: 'string' },
+          ano: { type: 'number', minimum: 1900, maximum: 2100 },
+          cor: { type: 'string' },
+          quilometragem: { type: 'number', minimum: 0 },
+          codigo_cs: { type: 'string' },
+          tipo: { type: 'string', enum: ['Nova', 'Usada'] },
+          valor_semanal: { type: 'number', minimum: 0 },
+          city_id: { type: 'string', format: 'uuid' },
+          franchisee_id: { type: 'string', format: 'uuid' },
+          franqueado: { type: 'string' },
+          doc_moto: { type: 'string', format: 'uri' },
+          doc_taxa_intermediacao: { type: 'string', format: 'uri' },
+          observacoes: { type: 'string' },
+          status: { type: 'string', enum: motorcycleStatusEnum },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: motorcycleResponseSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = updateMotorcycleSchema.safeParse(request.body);
+
+    if (!body.success) {
+      throw new BadRequestError(body.error.errors[0].message);
+    }
+
+    const context = getContext(request);
+
+    const existingMoto = await prisma.motorcycle.findUnique({
+      where: { id },
+    });
+
+    if (!existingMoto) {
+      throw new NotFoundError('Motocicleta não encontrada');
+    }
+
+    // Verificar permissão
+    if (!context.isMasterOrAdmin()) {
+      if (context.isFranchisee() && existingMoto.franchisee_id !== context.franchiseeId) {
+        throw new ForbiddenError('Sem permissão para modificar esta motocicleta');
+      }
+    }
+
+    const data = body.data;
+
+    // Se estiver alterando placa, verificar unicidade
+    if (data.placa && data.placa.toUpperCase() !== existingMoto.placa) {
+      const placaExists = await prisma.motorcycle.findUnique({
+        where: { placa: data.placa.toUpperCase() },
+      });
+      if (placaExists) {
+        throw new BadRequestError('Placa já cadastrada');
+      }
+    }
+
+    // Se estiver alterando status, registrar movimento
+    if (data.status && data.status !== existingMoto.status) {
+      await prisma.motorcycleMovement.create({
+        data: {
+          motorcycle_id: id,
+          previous_status: existingMoto.status,
+          new_status: data.status,
+          reason: 'Status alterado manualmente',
+          created_by: context.userId,
+        },
+      });
+    }
+
+    const motorcycle = await prisma.motorcycle.update({
+      where: { id },
+      data: {
+        ...data,
+        placa: data.placa?.toUpperCase(),
+        data_ultima_mov: data.status !== existingMoto.status ? new Date() : undefined,
+      },
+      include: {
+        city: true,
+        franchisee: true,
+      },
+    });
+
+    await auditService.logFromRequest(
+      request,
+      AuditActions.MOTORCYCLE_UPDATE,
+      'motorcycle',
+      id,
+      existingMoto,
+      data
+    );
+
+    return reply.status(200).send({
+      success: true,
+      data: motorcycle,
+    });
+  });
+
+  /**
+   * PATCH /api/motorcycles/:id/status
+   * Alterar status da motocicleta
+   */
+  app.patch('/:id/status', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Alterar status da motocicleta',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+        },
+      },
+      body: {
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: motorcycleStatusEnum, description: 'Novo status da motocicleta' },
+          reason: { type: 'string', description: 'Motivo da alteração de status' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                status: { type: 'string' },
+              },
+            },
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { status, reason } = request.body as { status: string; reason?: string };
+    const context = getContext(request);
+
+    const validStatuses = [
+      'active', 'alugada', 'relocada', 'manutencao', 'recolhida',
+      'indisponivel_rastreador', 'indisponivel_emplacamento',
+      'inadimplente', 'renegociado', 'furto_roubo'
+    ];
+
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestError('Status inválido');
+    }
+
+    const motorcycle = await prisma.motorcycle.findUnique({
+      where: { id },
+    });
+
+    if (!motorcycle) {
+      throw new NotFoundError('Motocicleta não encontrada');
+    }
+
+    // Verificar permissão
+    if (!context.isMasterOrAdmin()) {
+      if (context.isFranchisee() && motorcycle.franchisee_id !== context.franchiseeId) {
+        throw new ForbiddenError('Sem permissão para modificar esta motocicleta');
+      }
+    }
+
+    // Não permitir mudar para 'alugada' diretamente (deve ser via locação)
+    if (status === 'alugada' && motorcycle.status !== 'alugada') {
+      throw new BadRequestError('Status "alugada" só pode ser definido via criação de locação');
+    }
+
+    await prisma.$transaction([
+      prisma.motorcycle.update({
+        where: { id },
+        data: {
+          status: status as any,
+          data_ultima_mov: new Date(),
+        },
+      }),
+      prisma.motorcycleMovement.create({
+        data: {
+          motorcycle_id: id,
+          previous_status: motorcycle.status,
+          new_status: status,
+          reason: reason || 'Status alterado manualmente',
+          created_by: context.userId,
+        },
+      }),
+    ]);
+
+    await auditService.logFromRequest(
+      request,
+      AuditActions.MOTORCYCLE_STATUS_CHANGE,
+      'motorcycle',
+      id,
+      { status: motorcycle.status },
+      { status, reason }
+    );
+
+    return reply.status(200).send({
+      success: true,
+      data: { id, status },
+    });
+  });
+
+  /**
+   * GET /api/motorcycles/:id/movements
+   * Histórico de movimentações da motocicleta
+   */
+  app.get('/:id/movements', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Histórico de movimentações da motocicleta',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'number', minimum: 1, default: 1, description: 'Página atual' },
+          limit: { type: 'number', minimum: 1, maximum: 100, default: 20, description: 'Itens por página' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'array', items: movementResponseSchema },
+            pagination: paginationSchema,
+          },
+        },
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { page = 1, limit = 20 } = request.query as { page?: number; limit?: number };
+
+    const motorcycle = await prisma.motorcycle.findUnique({
+      where: { id },
+    });
+
+    if (!motorcycle) {
+      throw new NotFoundError('Motocicleta não encontrada');
+    }
+
+    const [movements, total] = await Promise.all([
+      prisma.motorcycleMovement.findMany({
+        where: { motorcycle_id: id },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.motorcycleMovement.count({ where: { motorcycle_id: id } }),
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      data: movements,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  });
+
+  /**
+   * GET /api/motorcycles/stats
+   * Estatísticas da frota
+   */
+  app.get('/stats', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Estatísticas da frota de motocicletas',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                total: { type: 'number', description: 'Total de motocicletas' },
+                active: { type: 'number', description: 'Disponíveis' },
+                alugada: { type: 'number', description: 'Alugadas' },
+                relocada: { type: 'number', description: 'Relocadas' },
+                manutencao: { type: 'number', description: 'Em manutenção' },
+                recolhida: { type: 'number', description: 'Recolhidas' },
+                indisponivel_rastreador: { type: 'number', description: 'Indisponível (rastreador)' },
+                indisponivel_emplacamento: { type: 'number', description: 'Indisponível (emplacamento)' },
+                inadimplente: { type: 'number', description: 'Inadimplentes' },
+                renegociado: { type: 'number', description: 'Renegociadas' },
+                furto_roubo: { type: 'number', description: 'Furto/Roubo' },
+              },
+            },
+          },
+        },
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const filter = context.getFranchiseeFilter();
+
+    const statusCounts = await prisma.motorcycle.groupBy({
+      by: ['status'],
+      where: filter,
+      _count: { status: true },
+    });
+
+    const total = statusCounts.reduce((acc, item) => acc + item._count.status, 0);
+
+    const stats: Record<string, number> = { total };
+    statusCounts.forEach(item => {
+      stats[item.status] = item._count.status;
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: stats,
+    });
+  });
+
+  /**
+   * GET /api/motorcycles/available
+   * Listar motos disponíveis para locação
+   */
+  app.get('/available', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar motocicletas disponíveis para locação',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'array', items: motorcycleResponseSchema },
+          },
+        },
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const filter = context.getFranchiseeFilter();
+
+    const motorcycles = await prisma.motorcycle.findMany({
+      where: {
+        ...filter,
+        status: 'active',
+      },
+      include: {
+        city: true,
+        franchisee: true,
+      },
+      orderBy: { modelo: 'asc' },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: motorcycles,
+    });
+  });
+};
+
+export default motorcyclesRoutes;

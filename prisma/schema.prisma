@@ -1,0 +1,944 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  master_br
+  admin
+  regional
+  franchisee
+}
+
+enum UserStatus {
+  active
+  blocked
+  inactive
+  pending
+}
+
+enum RegionalType {
+  admin
+  simples
+}
+
+enum MasterType {
+  admin
+  simples
+}
+
+enum MotorcycleStatus {
+  active
+  alugada
+  relocada
+  manutencao
+  recolhida
+  indisponivel_rastreador
+  indisponivel_emplacamento
+  inadimplente
+  renegociado
+  furto_roubo
+}
+
+enum RentalStatus {
+  active
+  completed
+  cancelled
+  paused
+}
+
+enum ClientStatus {
+  ativo
+  inativo
+  bloqueado
+}
+
+enum DriverStatus {
+  active
+  inactive
+}
+
+enum ContractStatus {
+  draft
+  generated
+  sent
+  signed
+  cancelled
+}
+
+enum FinanceiroTipo {
+  entrada
+  saida
+}
+
+enum CategoriaTipo {
+  entrada
+  saida
+  ambos
+}
+
+enum FrequenciaRecorrente {
+  semanal
+  quinzenal
+  mensal
+}
+
+enum VistoriaType {
+  entrada
+  saida
+  periodica
+}
+
+enum VistoriaStatus {
+  pendente
+  aprovada
+  reprovada
+}
+
+enum LeadSource {
+  instagram_proprio
+  indicacao
+  espontaneo
+  google
+}
+
+enum MotorcycleType {
+  Nova
+  Usada
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model AppUser {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                   String        @unique
+  name                    String?
+  role                    UserRole      @default(franchisee)
+  regional_type           RegionalType?
+  master_type             MasterType?
+  status                  UserStatus    @default(pending)
+  city_id                 String?       @db.Uuid
+  franchisee_id           String?       @db.Uuid
+  avatar_url              String?
+  plugsign_token          String?
+
+  // Campos de autenticação (novos - migração)
+  password_hash           String?
+  refresh_token           String?
+  refresh_token_expires_at DateTime?
+  failed_login_attempts   Int           @default(0)
+  locked_until            DateTime?
+  last_login              DateTime?
+  password_reset_token    String?
+  password_reset_expires  DateTime?
+
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+
+  // Relações
+  city                    City?         @relation(fields: [city_id], references: [id])
+  franchisee              Franchisee?   @relation(fields: [franchisee_id], references: [id])
+
+  // Relações inversas
+  created_financeiro      Financeiro[]  @relation("CreatedByUser")
+  created_recorrentes     LancamentoRecorrente[] @relation("CreatedByUser")
+  created_vistorias       Vistoria[]    @relation("CreatedByUser")
+  created_contracts       GeneratedContract[] @relation("CreatedByUser")
+  attended_rentals        Rental[]      @relation("AttendantUser")
+  audit_logs              AuditLog[]
+
+  @@index([email])
+  @@index([city_id])
+  @@index([franchisee_id])
+  @@index([refresh_token])
+  @@map("app_users")
+}
+
+model City {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  slug        String   @unique
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relações inversas
+  users       AppUser[]
+  franchisees Franchisee[]
+  motorcycles Motorcycle[]
+  rentals     Rental[]
+  vistorias   Vistoria[]
+  contracts   GeneratedContract[]
+
+  @@map("cities")
+}
+
+model Franchisee {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cnpj                 String?
+  company_name         String?
+  fantasy_name         String?
+  cpf                  String?
+  endereco             String?
+  email                String?
+  whatsapp_01          String?
+  whatsapp_02          String?
+  city_id              String   @db.Uuid
+  status               String?  @default("active")
+  royalties_percentage Decimal? @db.Decimal(5, 2)
+  moto_limit           Int?
+  user_id              String?  @db.Uuid
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  // Relações
+  city                 City     @relation(fields: [city_id], references: [id])
+
+  // Relações inversas
+  users                AppUser[]
+  motorcycles          Motorcycle[]
+  rentals              Rental[]
+  clients              Client[]
+  financeiros          Financeiro[]
+  recorrentes          LancamentoRecorrente[]
+  vistorias            Vistoria[]
+
+  @@index([city_id])
+  @@index([cnpj])
+  @@map("franchisees")
+}
+
+model Motorcycle {
+  id                      String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  placa                   String           @unique
+  chassi                  String?
+  renavam                 String?
+  modelo                  String
+  marca                   String?
+  ano                     Int?
+  cor                     String?
+  quilometragem           Int?
+  status                  MotorcycleStatus @default(active)
+  codigo_cs               String?
+  tipo                    MotorcycleType?
+  valor_semanal           Decimal?         @db.Decimal(10, 2)
+  data_ultima_mov         DateTime?
+  data_criacao            DateTime?
+  city_id                 String?          @db.Uuid
+  franchisee_id           String?          @db.Uuid
+  franqueado              String?
+  doc_moto                String?
+  doc_taxa_intermediacao  String?
+  observacoes             String?
+  created_at              DateTime         @default(now())
+  updated_at              DateTime         @updatedAt
+
+  // Relações
+  city                    City?            @relation(fields: [city_id], references: [id])
+  franchisee              Franchisee?      @relation(fields: [franchisee_id], references: [id])
+
+  // Relações inversas
+  rentals                 Rental[]
+  vistorias               Vistoria[]
+  financeiros             Financeiro[]
+  recorrentes             LancamentoRecorrente[]
+  movements               MotorcycleMovement[]
+
+  @@index([placa])
+  @@index([city_id])
+  @@index([franchisee_id])
+  @@index([status])
+  @@map("motorcycles")
+}
+
+model MotorcycleMovement {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  motorcycle_id   String   @db.Uuid
+  previous_status String?
+  new_status      String
+  reason          String?
+  created_by      String?  @db.Uuid
+  created_at      DateTime @default(now())
+
+  // Relações
+  motorcycle      Motorcycle @relation(fields: [motorcycle_id], references: [id])
+
+  @@index([motorcycle_id])
+  @@index([created_at])
+  @@map("motorcycle_movements")
+}
+
+model Client {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name           String
+  cpf                 String
+  rg                  String?
+  birth_date          DateTime?    @db.Date
+  phone               String
+  phone2              String?
+  email               String?
+  profession          String?
+  address             String?
+  number              String?
+  complement          String?
+  neighborhood        String?
+  city                String?
+  state               String?
+  zip_code            String?
+  cnh_number          String?
+  cnh_category        String?
+  cnh_expiry_date     DateTime?    @db.Date
+  cnh_document_url    String?
+  residence_proof_url String?
+  contract_signed_url String?
+  is_pj               Boolean      @default(false)
+  cnpj                String?
+  razao_social        String?
+  cpf_responsavel     String?
+  status              ClientStatus @default(ativo)
+  franchisee_id       String?      @db.Uuid
+  city_id             String?      @db.Uuid
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  // Relações
+  franchisee          Franchisee?  @relation(fields: [franchisee_id], references: [id])
+
+  // Relações inversas
+  drivers             ClientDriver[]
+  rentals             Rental[]
+  vistorias           Vistoria[]
+
+  @@index([cpf])
+  @@index([franchisee_id])
+  @@map("clients")
+}
+
+model ClientDriver {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  client_id           String       @db.Uuid
+  full_name           String
+  rg                  String?
+  cpf                 String
+  birth_date          DateTime?    @db.Date
+  email               String?
+  phone               String?
+  address_street      String?
+  address_number      String?
+  address_complement  String?
+  address_neighborhood String?
+  address_city        String?
+  address_state       String?
+  address_zip_code    String?
+  cnh_number          String?
+  cnh_category        String?
+  cnh_expiry_date     DateTime?    @db.Date
+  cnh_document_url    String?
+  residence_proof_url String?
+  status              DriverStatus @default(active)
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  // Relações
+  client              Client       @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  @@index([client_id])
+  @@index([cpf])
+  @@map("client_drivers")
+}
+
+model RentalPlan {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  daily_rate  Decimal  @db.Decimal(10, 2)
+  min_days    Int?
+  max_days    Int?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relações inversas
+  rentals     Rental[]
+
+  @@map("rental_plans")
+}
+
+model Rental {
+  id                        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  client_id                 String?      @db.Uuid
+  client_name               String
+  client_email              String?
+  client_phone              String
+  client_cpf                String
+  client_address_street     String?
+  client_address_number     String?
+  client_address_complement String?
+  client_address_neighborhood String?
+  client_address_city       String?
+  client_address_state      String?
+  client_address_zip_code   String?
+  driver_name               String?
+  driver_cpf                String?
+  driver_phone              String?
+  driver_cnh                String?
+  driver_address_street     String?
+  driver_address_number     String?
+  driver_address_city       String?
+  driver_address_state      String?
+  driver_address_zip_code   String?
+  motorcycle_id             String       @db.Uuid
+  motorcycle_plate          String
+  franchisee_id             String       @db.Uuid
+  city_id                   String?      @db.Uuid
+  attendant_id              String?      @db.Uuid
+  plan_id                   String?      @db.Uuid
+  start_date                DateTime     @db.Date
+  end_date                  DateTime?    @db.Date
+  km_inicial                Int?
+  km_final                  Int?
+  total_days                Int?
+  daily_rate                Decimal      @db.Decimal(10, 2)
+  total_amount              Decimal?     @db.Decimal(10, 2)
+  deposit_amount            Decimal?     @db.Decimal(10, 2)
+  status                    RentalStatus @default(active)
+  lead_source               LeadSource?
+  observations              String?
+  created_at                DateTime     @default(now())
+  updated_at                DateTime     @updatedAt
+
+  // Relações
+  client                    Client?      @relation(fields: [client_id], references: [id])
+  motorcycle                Motorcycle   @relation(fields: [motorcycle_id], references: [id])
+  franchisee                Franchisee   @relation(fields: [franchisee_id], references: [id])
+  city                      City?        @relation(fields: [city_id], references: [id])
+  attendant                 AppUser?     @relation("AttendantUser", fields: [attendant_id], references: [id])
+  plan                      RentalPlan?  @relation(fields: [plan_id], references: [id])
+
+  // Relações inversas
+  vistorias                 Vistoria[]
+  contracts                 GeneratedContract[]
+  distratos                 Distrato[]
+
+  @@index([franchisee_id])
+  @@index([city_id])
+  @@index([motorcycle_id])
+  @@index([status])
+  @@index([start_date])
+  @@map("rentals")
+}
+
+model Distrato {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rental_id           String   @db.Uuid
+  motivo              String
+  data_distrato       DateTime @db.Date
+  km_final            Int?
+  valor_devolucao     Decimal? @db.Decimal(10, 2)
+  observacoes         String?
+  signature_request_id String?
+  signed_url          String?
+  status              ContractStatus @default(draft)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  // Relações
+  rental              Rental   @relation(fields: [rental_id], references: [id])
+
+  // Relações inversas
+  vistorias           Vistoria[]
+
+  @@index([rental_id])
+  @@map("distratos")
+}
+
+model ContractType {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  category    String
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relações inversas
+  templates   ContractTemplate[]
+
+  @@map("contract_types")
+}
+
+model ContractTemplate {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contract_type_id String   @db.Uuid
+  name             String
+  version          String   @default("1.0")
+  title            String
+  content          Json
+  variables        Json     @default("[]")
+  is_active        Boolean  @default(true)
+  is_default       Boolean  @default(false)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relações
+  contract_type    ContractType @relation(fields: [contract_type_id], references: [id])
+
+  // Relações inversas
+  clauses          ContractClause[]
+  contracts        GeneratedContract[]
+
+  @@index([contract_type_id])
+  @@map("contract_templates")
+}
+
+model ContractClause {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id   String   @db.Uuid
+  clause_number String
+  title         String
+  content       String
+  order_index   Int
+  is_required   Boolean  @default(true)
+  variables     Json     @default("[]")
+  created_at    DateTime @default(now())
+
+  // Relações
+  template      ContractTemplate @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@index([template_id])
+  @@map("contract_clauses")
+}
+
+model GeneratedContract {
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id          String         @db.Uuid
+  rental_id            String?        @db.Uuid
+  contract_number      String         @unique
+  contract_data        Json
+  pdf_url              String?
+  status               ContractStatus @default(draft)
+  signature_request_id String?
+  batch_id             String?
+  signed_at            DateTime?
+  expires_at           DateTime?
+  city_id              String?        @db.Uuid
+  created_by           String?        @db.Uuid
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+
+  // Relações
+  template             ContractTemplate @relation(fields: [template_id], references: [id])
+  rental               Rental?          @relation(fields: [rental_id], references: [id])
+  city                 City?            @relation(fields: [city_id], references: [id])
+  creator              AppUser?         @relation("CreatedByUser", fields: [created_by], references: [id])
+
+  @@index([rental_id])
+  @@index([status])
+  @@index([signature_request_id])
+  @@map("generated_contracts")
+}
+
+model CategoriaFinanceiro {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome        String
+  tipo        CategoriaTipo
+  descricao   String?
+  ativo       Boolean      @default(true)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  // Relações inversas
+  financeiros Financeiro[]
+  recorrentes LancamentoRecorrente[]
+
+  @@map("categorias_financeiro")
+}
+
+model Financeiro {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  franchisee_id    String         @db.Uuid
+  tipo             FinanceiroTipo
+  placa            String?
+  motorcycle_id    String?        @db.Uuid
+  categoria_id     String?        @db.Uuid
+  locatario        String?
+  valor            Decimal        @db.Decimal(10, 2)
+  data             DateTime       @db.Date
+  descricao        String
+  pago             Boolean        @default(false)
+  comprovante_url  String?
+  comprovante_url_2 String?
+  created_by       String?        @db.Uuid
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+
+  // Relações
+  franchisee       Franchisee     @relation(fields: [franchisee_id], references: [id])
+  motorcycle       Motorcycle?    @relation(fields: [motorcycle_id], references: [id])
+  categoria        CategoriaFinanceiro? @relation(fields: [categoria_id], references: [id])
+  creator          AppUser?       @relation("CreatedByUser", fields: [created_by], references: [id])
+
+  // Relações inversas
+  historico_recorrente LancamentoRecorrenteHistorico[]
+
+  @@index([franchisee_id])
+  @@index([data])
+  @@index([tipo])
+  @@map("financeiro")
+}
+
+model LancamentoRecorrente {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  franchisee_id   String              @db.Uuid
+  tipo            FinanceiroTipo
+  placa           String?
+  motorcycle_id   String?             @db.Uuid
+  categoria_id    String?             @db.Uuid
+  locatario       String?
+  valor           Decimal             @db.Decimal(10, 2)
+  descricao       String
+  frequencia      FrequenciaRecorrente
+  dia_vencimento  Int?
+  data_inicio     DateTime            @db.Date
+  data_fim        DateTime?           @db.Date
+  ativo           Boolean             @default(true)
+  created_by      String?             @db.Uuid
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+
+  // Relações
+  franchisee      Franchisee          @relation(fields: [franchisee_id], references: [id])
+  motorcycle      Motorcycle?         @relation(fields: [motorcycle_id], references: [id])
+  categoria       CategoriaFinanceiro? @relation(fields: [categoria_id], references: [id])
+  creator         AppUser?            @relation("CreatedByUser", fields: [created_by], references: [id])
+
+  // Relações inversas
+  historico       LancamentoRecorrenteHistorico[]
+
+  @@index([franchisee_id])
+  @@index([ativo])
+  @@map("lancamentos_recorrentes")
+}
+
+model LancamentoRecorrenteHistorico {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recorrente_id String   @db.Uuid
+  financeiro_id String   @db.Uuid
+  data_geracao  DateTime @db.Date
+  created_at    DateTime @default(now())
+
+  // Relações
+  recorrente    LancamentoRecorrente @relation(fields: [recorrente_id], references: [id], onDelete: Cascade)
+  financeiro    Financeiro           @relation(fields: [financeiro_id], references: [id], onDelete: Cascade)
+
+  @@index([recorrente_id])
+  @@index([financeiro_id])
+  @@map("lancamentos_recorrentes_historico")
+}
+
+model Rastreador {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cnpj        String?
+  empresa     String?
+  franqueado  String?
+  chassi      String?
+  placa       String?
+  rastreador  String?
+  tipo        String?
+  moto        String?
+  mes         String?
+  valor       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([placa])
+  @@index([franqueado])
+  @@index([mes])
+  @@map("rastreadores")
+}
+
+model Vistoria {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rental_id       String?       @db.Uuid
+  distrato_id     String?       @db.Uuid
+  motorcycle_id   String        @db.Uuid
+  city_id         String?       @db.Uuid
+  franchisee_id   String?       @db.Uuid
+  client_id       String?       @db.Uuid
+  inspection_date DateTime      @db.Date
+  inspection_type VistoriaType
+  status          VistoriaStatus @default(pendente)
+  placa           String?
+  locadora        String?
+  locatario       String?
+  observations    String?
+  data_hora       String?
+  foto_1_path     String?
+  foto_2_path     String?
+  foto_3_path     String?
+  foto_4_path     String?
+  foto_5_path     String?
+  created_by      String?       @db.Uuid
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  // Relações
+  rental          Rental?       @relation(fields: [rental_id], references: [id])
+  distrato        Distrato?     @relation(fields: [distrato_id], references: [id])
+  motorcycle      Motorcycle    @relation(fields: [motorcycle_id], references: [id])
+  city            City?         @relation(fields: [city_id], references: [id])
+  franchisee      Franchisee?   @relation(fields: [franchisee_id], references: [id])
+  client          Client?       @relation(fields: [client_id], references: [id])
+  creator         AppUser?      @relation("CreatedByUser", fields: [created_by], references: [id])
+
+  @@index([rental_id])
+  @@index([motorcycle_id])
+  @@index([city_id])
+  @@index([franchisee_id])
+  @@map("vistorias")
+}
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String?
+  entity_id   String?
+  old_data    Json?
+  new_data    Json?
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime @default(now())
+
+  // Relações
+  user        AppUser? @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([action])
+  @@index([entity_type, entity_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+// Tabelas de Pesquisa de Satisfação
+model SatisfactionSurvey {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  questions       Json
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relações inversas
+  responses       SurveyResponse[]
+
+  @@map("satisfaction_surveys")
+}
+
+model SurveyResponse {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  survey_id   String   @db.Uuid
+  rental_id   String?  @db.Uuid
+  client_name String?
+  client_phone String?
+  answers     Json
+  rating      Int?
+  comments    String?
+  status      String   @default("pending")
+  responded_at DateTime?
+  created_at  DateTime @default(now())
+
+  // Relações
+  survey      SatisfactionSurvey @relation(fields: [survey_id], references: [id])
+
+  @@index([survey_id])
+  @@index([rental_id])
+  @@map("survey_responses")
+}
+
+// Tabela de Campanhas
+model Campaign {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  type            String
+  status          String   @default("draft")
+  target_audience Json?
+  content         Json?
+  scheduled_at    DateTime?
+  sent_at         DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("campaigns")
+}
+
+// Tabela de Instâncias Evolution (WhatsApp)
+model EvolutionInstance {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  instance_name   String   @unique
+  instance_id     String?
+  status          String   @default("disconnected")
+  qr_code         String?
+  phone_number    String?
+  franchisee_id   String?  @db.Uuid
+  city_id         String?  @db.Uuid
+  webhook_url     String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("evolution_instances")
+}
+
+// Tabela de Conversas IA
+model IaConversation {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String   @db.Uuid
+  title           String?
+  messages        Json     @default("[]")
+  context         Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([user_id])
+  @@map("ia_conversations")
+}
+
+// Tabela de Sugestões
+model Suggestion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?  @db.Uuid
+  title           String
+  description     String
+  category        String?
+  status          String   @default("pending")
+  votes           Int      @default(0)
+  admin_response  String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("suggestions")
+}
+
+// Tabela de Leads
+model Lead {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  phone           String
+  email           String?
+  source          String?
+  status          String   @default("new")
+  notes           String?
+  franchisee_id   String?  @db.Uuid
+  city_id         String?  @db.Uuid
+  assigned_to     String?  @db.Uuid
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([franchisee_id])
+  @@index([city_id])
+  @@map("leads")
+}
+
+// Tabela de Deals (Vendas)
+model Deal {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id         String?  @db.Uuid
+  title           String
+  value           Decimal? @db.Decimal(10, 2)
+  stage           String   @default("prospecting")
+  probability     Int?
+  expected_close  DateTime? @db.Date
+  notes           String?
+  franchisee_id   String?  @db.Uuid
+  city_id         String?  @db.Uuid
+  assigned_to     String?  @db.Uuid
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([franchisee_id])
+  @@index([city_id])
+  @@map("deals")
+}
+
+// Tabela de Manutenções (Ordens de Serviço)
+model Manutencao {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  motorcycle_id   String   @db.Uuid
+  franchisee_id   String?  @db.Uuid
+  city_id         String?  @db.Uuid
+  tipo            String
+  descricao       String?
+  status          String   @default("aberta")
+  data_entrada    DateTime @db.Date
+  data_saida      DateTime? @db.Date
+  valor_total     Decimal? @db.Decimal(10, 2)
+  oficina         String?
+  observacoes     String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relações inversas
+  servicos        ManutencaoServico[]
+  pecas           ManutencaoPeca[]
+
+  @@index([motorcycle_id])
+  @@index([franchisee_id])
+  @@map("manutencoes")
+}
+
+model ManutencaoServico {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id   String   @db.Uuid
+  descricao       String
+  valor           Decimal  @db.Decimal(10, 2)
+  created_at      DateTime @default(now())
+
+  // Relações
+  manutencao      Manutencao @relation(fields: [manutencao_id], references: [id], onDelete: Cascade)
+
+  @@map("manutencao_servicos")
+}
+
+model ManutencaoPeca {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id   String   @db.Uuid
+  nome            String
+  quantidade      Int      @default(1)
+  valor_unitario  Decimal  @db.Decimal(10, 2)
+  created_at      DateTime @default(now())
+
+  // Relações
+  manutencao      Manutencao @relation(fields: [manutencao_id], references: [id], onDelete: Cascade)
+
+  @@map("manutencao_pecas")
+}
+
+// Tabela de Recibos de Caução
+model DepositReceipt {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rental_id            String?  @db.Uuid
+  client_name          String
+  client_cpf           String
+  amount               Decimal  @db.Decimal(10, 2)
+  payment_method       String?
+  receipt_number       String?
+  pdf_url              String?
+  signature_request_id String?
+  status               ContractStatus @default(draft)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([rental_id])
+  @@map("deposit_receipts")
+}
