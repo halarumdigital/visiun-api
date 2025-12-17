@@ -125,9 +125,10 @@ export const loginRateLimit = rateLimit({
 
 /**
  * Rate limit para requisições de API gerais
+ * NOTA: Temporariamente muito alto para resolver problema de múltiplas requisições
  */
 export const apiRateLimit = rateLimit({
-  max: 100,
+  max: 100000,
   windowMs: 60 * 1000, // 1 minuto
 });
 

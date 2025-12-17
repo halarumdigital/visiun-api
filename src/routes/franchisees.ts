@@ -107,8 +107,14 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
       select: {
         id: true,
         user_id: true,
+        cnpj: true,
+        cpf: true,
         fantasy_name: true,
         company_name: true,
+        endereco: true,
+        email: true,
+        whatsapp_01: true,
+        whatsapp_02: true,
         city_id: true,
         royalties_percentage: true,
         moto_limit: true,
@@ -135,7 +141,7 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
    * Criar múltiplos franqueados (para importação CSV)
    */
   app.post('/batch', {
-    preHandler: [authMiddleware, rbac(['admin', 'master_br'])],
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
     schema: {
       description: 'Criar múltiplos franqueados em lote',
       tags: ['Franqueados'],

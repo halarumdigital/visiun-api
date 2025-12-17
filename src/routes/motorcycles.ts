@@ -37,8 +37,29 @@ const motorcycleResponseSchema = {
     data_ultima_mov: { type: 'string', format: 'date-time', nullable: true },
     created_at: { type: 'string', format: 'date-time' },
     updated_at: { type: 'string', format: 'date-time' },
-    city: { type: 'object', nullable: true },
-    franchisee: { type: 'object', nullable: true },
+    city: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        name: { type: 'string' },
+      },
+      additionalProperties: true
+    },
+    franchisee: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        company_name: { type: 'string', nullable: true },
+        fantasy_name: { type: 'string', nullable: true },
+        cnpj: { type: 'string', nullable: true },
+        email: { type: 'string', nullable: true },
+        whatsapp_01: { type: 'string', nullable: true },
+        city_id: { type: 'string', format: 'uuid', nullable: true },
+      },
+      additionalProperties: true
+    },
   },
 };
 
@@ -1030,7 +1051,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
    * Excluir motocicletas por período de criação
    */
   app.delete('/by-period', {
-    preHandler: [authMiddleware, rbac(['admin', 'master_br'])],
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
     schema: {
       description: 'Excluir motocicletas por período de criação',
       tags: ['Motocicletas'],
@@ -1094,7 +1115,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
    * Excluir motocicletas em lote por IDs
    */
   app.delete('/batch', {
-    preHandler: [authMiddleware, rbac(['admin', 'master_br'])],
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
     schema: {
       description: 'Excluir motocicletas em lote por IDs',
       tags: ['Motocicletas'],
@@ -1149,11 +1170,64 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * DELETE /api/motorcycles/:id
+   * Excluir uma motocicleta específica pelo ID
+   */
+  app.delete('/:id', {
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br', 'regional'] })],
+    schema: {
+      description: 'Excluir uma motocicleta específica pelo ID',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    // Verificar se a moto existe
+    const motorcycle = await prisma.motorcycle.findUnique({
+      where: { id },
+    });
+
+    if (!motorcycle) {
+      throw new NotFoundError('Motocicleta não encontrada');
+    }
+
+    // Excluir a moto
+    await prisma.motorcycle.delete({
+      where: { id },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Motocicleta excluída com sucesso',
+    });
+  });
+
+  /**
    * POST /api/motorcycles/batch
    * Criar motocicletas em lote (importação CSV)
    */
   app.post('/batch', {
-    preHandler: [authMiddleware, rbac(['admin', 'master_br'])],
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
     schema: {
       description: 'Criar motocicletas em lote (importação CSV)',
       tags: ['Motocicletas'],

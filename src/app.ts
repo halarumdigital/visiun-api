@@ -20,6 +20,10 @@ import webhooksRoutes from './routes/webhooks.js';
 import integrationsRoutes from './routes/integrations/index.js';
 import citiesRoutes from './routes/cities.js';
 import franchiseesRoutes from './routes/franchisees.js';
+import clientsRoutes from './routes/clients.js';
+import templatesRoutes from './routes/templates.js';
+import contractsRoutes from './routes/contracts.js';
+import rentalPlansRoutes from './routes/rental-plans.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -130,6 +134,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(integrationsRoutes, { prefix: '/api/integrations' });
   await app.register(citiesRoutes, { prefix: '/api/cities' });
   await app.register(franchiseesRoutes, { prefix: '/api/franchisees' });
+  await app.register(clientsRoutes, { prefix: '/api/clients' });
+  await app.register(templatesRoutes, { prefix: '/api/templates' });
+  await app.register(contractsRoutes, { prefix: '/api/contracts' });
+  await app.register(rentalPlansRoutes, { prefix: '/api/rental-plans' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {

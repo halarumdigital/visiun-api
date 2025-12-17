@@ -98,6 +98,12 @@ export class StorageService {
     const key = customKey || `${folder}/${nanoid()}.${extension}`;
 
     try {
+      // Sanitizar nome do arquivo para metadata (remover caracteres especiais)
+      const sanitizedFilename = originalFilename
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+        .replace(/[^\x00-\x7F]/g, ''); // Remove caracteres não-ASCII
+
       await this.client.send(
         new PutObjectCommand({
           Bucket: this.bucket,
@@ -106,7 +112,7 @@ export class StorageService {
           ContentType: contentType,
           // Metadata opcional
           Metadata: {
-            'original-filename': originalFilename,
+            'original-filename': sanitizedFilename,
             'uploaded-at': new Date().toISOString(),
           },
         })

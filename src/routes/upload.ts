@@ -364,6 +364,60 @@ const uploadRoutes: FastifyPluginAsync = async (app) => {
       message: 'Arquivo deletado com sucesso',
     });
   });
+
+  /**
+   * POST /api/proxy-download
+   * Proxy para baixar PDFs do R2 (CORS bypass) - retorna base64
+   */
+  app.post('/proxy-download', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Proxy para baixar PDFs do R2',
+      tags: ['Upload'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL do arquivo para baixar' },
+        },
+        required: ['url'],
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            base64: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { url } = request.body as { url: string };
+
+    if (!url) {
+      throw new BadRequestError('URL é obrigatória');
+    }
+
+    try {
+      // Fazer fetch do arquivo
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new BadRequestError(`Erro ao baixar arquivo: ${response.status}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+
+      return reply.send({
+        success: true,
+        base64,
+      });
+    } catch (error: any) {
+      throw new BadRequestError(`Erro ao baixar arquivo: ${error.message}`);
+    }
+  });
 };
 
 export default uploadRoutes;

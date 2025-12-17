@@ -282,7 +282,7 @@ model MotorcycleMovement {
 model Client {
   id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   full_name           String
-  cpf                 String
+  cpf                 String?
   rg                  String?
   birth_date          DateTime?    @db.Date
   phone               String
@@ -291,17 +291,15 @@ model Client {
   profession          String?
   address             String?
   number              String?
-  complement          String?
-  neighborhood        String?
   city                String?
   state               String?
   zip_code            String?
   cnh_number          String?
   cnh_category        String?
   cnh_expiry_date     DateTime?    @db.Date
+  cnh_photo_url       String?
   cnh_document_url    String?
   residence_proof_url String?
-  contract_signed_url String?
   is_pj               Boolean      @default(false)
   cnpj                String?
   razao_social        String?
@@ -543,6 +541,7 @@ model GeneratedContract {
   status               String         @default("draft")
   signature_request_id String?
   batch_id             String?
+  document_key         String?
   signed_at            DateTime?
   expires_at           DateTime?
   city_id              String?        @db.Uuid

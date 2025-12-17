@@ -7,27 +7,112 @@ import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { BadRequestError, ServiceUnavailableError } from '../../utils/errors.js';
 
+/**
+ * Helper para buscar token PlugSign do banco de dados
+ * - Regional: busca token da tabela app_users
+ * - Master BR: busca token da tabela cities (baseado no cityId)
+ */
+async function getPlugSignToken(
+  prisma: any,
+  userId: string,
+  userRole: string,
+  cityId?: string
+): Promise<string | null> {
+  try {
+    // Para regional: buscar token do próprio usuário
+    if (userRole === 'regional') {
+      const user = await prisma.appUser.findUnique({
+        where: { id: userId },
+        select: { plugsign_token: true, email: true }
+      });
+
+      if (user?.plugsign_token && user.plugsign_token.length >= 50) {
+        logger.info({ email: user.email }, 'PlugSign: usando token do regional');
+        return user.plugsign_token;
+      }
+    }
+
+    // Para master_br: buscar token da cidade
+    if (userRole === 'master_br' && cityId) {
+      const city = await prisma.city.findUnique({
+        where: { id: cityId },
+        select: { plugsign_token: true, name: true }
+      });
+
+      if (city?.plugsign_token && city.plugsign_token.length >= 50) {
+        logger.info({ cidade: city.name }, 'PlugSign: usando token da cidade');
+        return city.plugsign_token;
+      }
+    }
+
+    // Fallback: tentar buscar do usuário logado (city_id)
+    const user = await prisma.appUser.findUnique({
+      where: { id: userId },
+      select: { city_id: true }
+    });
+
+    if (user?.city_id) {
+      const city = await prisma.city.findUnique({
+        where: { id: user.city_id },
+        select: { plugsign_token: true, name: true }
+      });
+
+      if (city?.plugsign_token && city.plugsign_token.length >= 50) {
+        logger.info({ cidade: city.name }, 'PlugSign: usando token da cidade do usuário');
+        return city.plugsign_token;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.error({ error }, 'Erro ao buscar token PlugSign do banco');
+    return null;
+  }
+}
+
 const integrationsRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Proxy para PlugSign API
    * ALL /api/integrations/plugsign/*
+   *
+   * Lógica de token:
+   * - Regional: usa token da tabela app_users
+   * - Master BR: usa token da tabela cities (baseado no cityId no body)
+   * - Fallback: usa token do .env
    */
   app.all('/plugsign/*', {
     preHandler: [authMiddleware, rbac()],
   }, async (request, reply) => {
-    if (!env.PLUGSIGN_API_URL || !env.PLUGSIGN_API_KEY) {
-      throw new ServiceUnavailableError('PlugSign API não configurada');
+    if (!env.PLUGSIGN_API_URL) {
+      throw new ServiceUnavailableError('PlugSign API URL não configurada');
     }
 
     const path = (request.params as { '*': string })['*'];
     const url = `${env.PLUGSIGN_API_URL}/${path}`;
+
+    // Buscar token do banco baseado no role do usuário
+    const user = request.user;
+    const body = request.body as any;
+    const cityId = body?.cityId || (request.query as any)?.cityId;
+
+    let apiToken = await getPlugSignToken(app.prisma, user.userId, user.role, cityId);
+
+    // Fallback para token do .env
+    if (!apiToken) {
+      if (env.PLUGSIGN_API_KEY && env.PLUGSIGN_API_KEY.length >= 50) {
+        logger.info('PlugSign: usando token do .env (fallback)');
+        apiToken = env.PLUGSIGN_API_KEY;
+      } else {
+        throw new ServiceUnavailableError('Token PlugSign não encontrado (banco ou .env)');
+      }
+    }
 
     try {
       const response = await axios({
         method: request.method as string,
         url,
         headers: {
-          'Authorization': `Bearer ${env.PLUGSIGN_API_KEY}`,
+          'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
         data: request.body,
@@ -44,13 +129,21 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
         { method: request.method, path }
       );
 
-      return reply.status(response.status).send(response.data);
+      // Envolver resposta no formato esperado pelo frontend
+      return reply.status(response.status).send({
+        success: true,
+        data: response.data
+      });
     } catch (error) {
       const axiosError = error as AxiosError;
       logger.error({ error: axiosError.message, path }, 'PlugSign API error');
 
       if (axiosError.response) {
-        return reply.status(axiosError.response.status).send(axiosError.response.data);
+        return reply.status(axiosError.response.status).send({
+          success: false,
+          error: (axiosError.response.data as any)?.message || 'Erro na API PlugSign',
+          data: axiosError.response.data
+        });
       }
 
       throw new ServiceUnavailableError('Erro na comunicação com PlugSign API');
@@ -109,52 +202,111 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Download de documento assinado via PlugSign
    * GET /api/integrations/plugsign-download/:documentKey
+   *
+   * NOTA: Devido a problemas de encoding/fontes onde '1' (número) e 'l' (letra L)
+   * podem ser confundidos, esta rota tenta múltiplas variações do document_key
    */
   app.get('/plugsign-download/:documentKey', {
     preHandler: [authMiddleware, rbac()],
   }, async (request, reply) => {
-    if (!env.PLUGSIGN_API_URL || !env.PLUGSIGN_API_KEY) {
-      throw new ServiceUnavailableError('PlugSign API não configurada');
-    }
-
     const { documentKey } = request.params as { documentKey: string };
 
-    try {
-      // Obter URL de download do documento
-      const response = await axios.get(
-        `${env.PLUGSIGN_API_URL}/documents/${documentKey}/download`,
-        {
+    // Buscar token do banco baseado no role do usuário
+    const user = request.user;
+    const cityId = (request.query as any)?.cityId;
+
+    let apiToken = await getPlugSignToken(app.prisma, user.userId, user.role, cityId);
+
+    // Fallback para token do .env
+    if (!apiToken) {
+      if (env.PLUGSIGN_API_KEY && env.PLUGSIGN_API_KEY.length >= 50) {
+        logger.info('PlugSign Download: usando token do .env (fallback)');
+        apiToken = env.PLUGSIGN_API_KEY;
+      } else {
+        throw new ServiceUnavailableError('Token PlugSign não encontrado (banco ou .env)');
+      }
+    }
+
+    /**
+     * Gera variações do document_key trocando caracteres confusos:
+     * - '1' (número um) <-> 'l' (letra L minúscula)
+     * - 'I' (letra I maiúscula) <-> 'l' (letra L minúscula)
+     * - 'O' (letra O) <-> '0' (número zero)
+     */
+    const generateKeyVariations = (key: string): string[] => {
+      const variations: Set<string> = new Set([key]);
+
+      // Trocar todos os '1' por 'l' e vice-versa
+      variations.add(key.replace(/1/g, 'l'));
+      variations.add(key.replace(/l/g, '1'));
+
+      // Trocar todos os 'I' por 'l' e vice-versa
+      variations.add(key.replace(/I/g, 'l'));
+      variations.add(key.replace(/l/g, 'I'));
+
+      // Trocar todos os 'O' por '0' e vice-versa
+      variations.add(key.replace(/O/g, '0'));
+      variations.add(key.replace(/0/g, 'O'));
+
+      return Array.from(variations);
+    };
+
+    const keyVariations = generateKeyVariations(documentKey);
+    logger.info({ documentKey, variationsCount: keyVariations.length, variations: keyVariations }, 'PlugSign: tentando variações do document_key');
+
+    let lastError: any = null;
+
+    for (const keyToTry of keyVariations) {
+      try {
+        const downloadUrl = `https://app.plugsign.com.br/api/files/download/${keyToTry}`;
+
+        logger.info({ keyToTry, downloadUrl }, 'PlugSign: tentando download');
+
+        const response = await axios.get(downloadUrl, {
           headers: {
-            'Authorization': `Bearer ${env.PLUGSIGN_API_KEY}`,
+            'Authorization': `Bearer ${apiToken}`,
+            'Accept': 'application/pdf'
           },
           responseType: 'arraybuffer',
           timeout: 60000,
+        });
+
+        // Se chegou aqui, deu certo!
+        logger.info({ originalKey: documentKey, usedKey: keyToTry }, 'PlugSign: download bem-sucedido');
+
+        await auditService.logFromRequest(
+          request,
+          AuditActions.PLUGSIGN_API_CALL,
+          'document',
+          keyToTry,
+          undefined,
+          { action: 'download', originalKey: documentKey, usedKey: keyToTry }
+        );
+
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `attachment; filename="documento-${keyToTry}.pdf"`);
+
+        return reply.send(Buffer.from(response.data));
+
+      } catch (error) {
+        const axiosError = error as AxiosError;
+        lastError = axiosError;
+
+        // Se for 404, tentar próxima variação
+        if (axiosError.response?.status === 404 || axiosError.response?.status === 400) {
+          logger.info({ keyToTry, status: axiosError.response?.status }, 'PlugSign: documento não encontrado com esta chave, tentando próxima');
+          continue;
         }
-      );
 
-      await auditService.logFromRequest(
-        request,
-        AuditActions.PLUGSIGN_API_CALL,
-        'document',
-        documentKey,
-        undefined,
-        { action: 'download' }
-      );
-
-      reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="documento-${documentKey}.pdf"`);
-
-      return reply.send(Buffer.from(response.data));
-    } catch (error) {
-      const axiosError = error as AxiosError;
-      logger.error({ error: axiosError.message, documentKey }, 'PlugSign download error');
-
-      if (axiosError.response?.status === 404) {
-        throw new BadRequestError('Documento não encontrado');
+        // Outros erros, logar e parar
+        logger.error({ error: axiosError.message, keyToTry }, 'PlugSign download error');
+        throw new ServiceUnavailableError('Erro ao baixar documento');
       }
-
-      throw new ServiceUnavailableError('Erro ao baixar documento');
     }
+
+    // Se chegou aqui, nenhuma variação funcionou
+    logger.error({ documentKey, triedVariations: keyVariations }, 'PlugSign: documento não encontrado em nenhuma variação');
+    throw new BadRequestError('Documento não encontrado');
   });
 
   /**

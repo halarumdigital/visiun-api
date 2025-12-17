@@ -57,12 +57,13 @@ const rentalResponseSchema = {
     created_by: { type: 'string', format: 'uuid', nullable: true },
     created_at: { type: ['string', 'null'], format: 'date-time', nullable: true },
     updated_at: { type: ['string', 'null'], format: 'date-time', nullable: true },
-    motorcycle: { type: 'object', nullable: true },
-    franchisee: { type: 'object', nullable: true },
-    city: { type: 'object', nullable: true },
-    attendant: { type: 'object', nullable: true },
-    plan: { type: 'object', nullable: true },
-    driver: { type: 'object', nullable: true },
+    motorcycle: { type: 'object', nullable: true, additionalProperties: true },
+    franchisee: { type: 'object', nullable: true, additionalProperties: true },
+    city: { type: 'object', nullable: true, additionalProperties: true },
+    attendant: { type: 'object', nullable: true, additionalProperties: true },
+    creator: { type: 'object', nullable: true, additionalProperties: true },
+    plan: { type: 'object', nullable: true, additionalProperties: true },
+    driver: { type: 'object', nullable: true, additionalProperties: true },
   },
 };
 
@@ -116,6 +117,8 @@ const createRentalSchema = z.object({
   km_inicial: z.number().int().min(0).optional().nullable(),
   daily_rate: z.number().positive('Valor da diária deve ser positivo'),
   deposit_amount: z.number().min(0).optional().nullable(),
+  total_days: z.number().int().min(0).optional().nullable(),
+  total_amount: z.number().min(0).optional().nullable(),
   lead_source: z.enum(['instagram_proprio', 'indicacao', 'espontaneo', 'google']).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
@@ -361,6 +364,8 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           km_inicial: { type: 'number', minimum: 0, description: 'Quilometragem inicial' },
           daily_rate: { type: 'number', minimum: 0, description: 'Valor da diária' },
           deposit_amount: { type: 'number', minimum: 0, description: 'Valor do depósito' },
+          total_days: { type: 'number', minimum: 0, description: 'Total de dias' },
+          total_amount: { type: 'number', minimum: 0, description: 'Valor total' },
           lead_source: { type: 'string', enum: ['instagram_proprio', 'indicacao', 'espontaneo', 'google'], description: 'Origem do lead' },
           notes: { type: 'string', description: 'Observações' },
         },
@@ -434,16 +439,16 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           client_address_city: data.client_address_city,
           client_address_state: data.client_address_state,
           client_address_zip_code: data.client_address_zip_code,
-          driver_id: data.driver_id,
-          driver_name: data.driver_name,
-          driver_cpf: data.driver_cpf,
-          driver_phone: data.driver_phone,
-          driver_cnh: data.driver_cnh,
-          driver_address_street: data.driver_address_street,
-          driver_address_number: data.driver_address_number,
-          driver_address_city: data.driver_address_city,
-          driver_address_state: data.driver_address_state,
-          driver_address_zip_code: data.driver_address_zip_code,
+          driver_id: data.driver_id || null,
+          driver_name: data.driver_name || null,
+          driver_cpf: data.driver_cpf || null,
+          driver_phone: data.driver_phone || null,
+          driver_cnh: data.driver_cnh || null,
+          driver_address_street: data.driver_address_street || null,
+          driver_address_number: data.driver_address_number || null,
+          driver_address_city: data.driver_address_city || null,
+          driver_address_state: data.driver_address_state || null,
+          driver_address_zip_code: data.driver_address_zip_code || null,
           motorcycle_id: data.motorcycle_id,
           motorcycle_plate: motorcycle.placa,
           franchisee_id: data.franchisee_id,
@@ -456,6 +461,8 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           km_inicial: data.km_inicial,
           daily_rate: data.daily_rate,
           deposit_amount: data.deposit_amount,
+          total_days: data.total_days,
+          total_amount: data.total_amount,
           lead_source: data.lead_source,
           notes: data.notes,
           status: 'active',
@@ -477,16 +484,8 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Registrar movimento da moto
-      await tx.motorcycleMovement.create({
-        data: {
-          motorcycle_id: data.motorcycle_id,
-          previous_status: motorcycle.status,
-          new_status: 'alugada',
-          reason: `Locação criada - ID: ${newRental.id}`,
-          created_by: context.userId,
-        },
-      });
+      // Movimento da moto registrado automaticamente via frontend ou trigger
+      // Tabela motorcycle_movements pode não existir em todas as instalações
 
       return newRental;
     });
@@ -659,6 +658,87 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(200).send({
       success: true,
       data: rental,
+    });
+  });
+
+  /**
+   * DELETE /api/rentals/:id
+   * Excluir locação
+   */
+  app.delete('/:id', {
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br', 'regional'] })],
+    schema: {
+      description: 'Excluir locação',
+      tags: ['Locações'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID da locação' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const context = getContext(request);
+
+    const rental = await prisma.rental.findUnique({
+      where: { id },
+      include: { motorcycle: true },
+    });
+
+    if (!rental) {
+      throw new NotFoundError('Locação não encontrada');
+    }
+
+    // Verificar permissão
+    if (!context.isMasterOrAdmin()) {
+      if (context.isRegional() && rental.city_id !== context.cityId) {
+        throw new ForbiddenError('Sem permissão para excluir esta locação');
+      }
+    }
+
+    // Se a locação está ativa, liberar a moto
+    if (rental.status === 'active' && rental.motorcycle) {
+      await prisma.motorcycle.update({
+        where: { id: rental.motorcycle_id },
+        data: {
+          status: 'active',
+          data_ultima_mov: new Date(),
+        },
+      });
+    }
+
+    // Excluir a locação
+    await prisma.rental.delete({
+      where: { id },
+    });
+
+    await auditService.logFromRequest(
+      request,
+      AuditActions.RENTAL_DELETE,
+      'rental',
+      id,
+      { client_name: rental.client_name, motorcycle_plate: rental.motorcycle_plate },
+      undefined
+    );
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Locação excluída com sucesso',
     });
   });
 
@@ -980,10 +1060,16 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         city: true,
         driver: true,
         attendant: true,
+        creator: true, // Fallback quando attendant_id é NULL
         plan: true,
       },
       orderBy: { start_date: 'desc' },
     });
+
+    // DEBUG: Verificar dados da primeira moto
+    if (rentals.length > 0 && rentals[0].motorcycle) {
+      console.log('🏍️ DEBUG Moto do primeiro rental:', JSON.stringify(rentals[0].motorcycle, null, 2));
+    }
 
     // Sanitizar datas inválidas para evitar erro de serialização
     const sanitizedRentals = rentals.map(rental => ({

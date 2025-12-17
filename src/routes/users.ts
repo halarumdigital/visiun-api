@@ -670,6 +670,106 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       data: { id: user.id, status: user.status },
     });
   });
+
+  /**
+   * GET /api/users/attendants
+   * Listar usuários para dropdown de atendentes (filtro por cidade)
+   */
+  app.get('/attendants', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar usuários para dropdown de atendentes',
+      tags: ['Usuários'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          city_id: { type: 'string', format: 'uuid', description: 'Filtrar por cidade' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string', nullable: true },
+                  city_id: { type: 'string', nullable: true },
+                  role: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { city_id } = request.query as { city_id?: string };
+    const context = getContext(request);
+    const user = request.user!;
+
+    console.log('🔍 [ATTENDANTS DEBUG] city_id:', city_id);
+    console.log('🔍 [ATTENDANTS DEBUG] user.role:', user.role);
+
+    // Construir filtro baseado no role do usuário
+    // Regra: mostrar todos os usuários da cidade selecionada/do usuário
+    const where: any = {
+      // Incluir apenas usuários com nome preenchido (exceto o próprio usuário logado)
+      OR: [
+        { name: { not: null } },
+        { id: user.userId },
+      ],
+    };
+
+    // Aplicar filtros de cidade de acordo com o role
+    if (context.isMasterOrAdmin()) {
+      // Master BR / Admin: mostrar TODOS os usuários da cidade selecionada
+      if (city_id) {
+        // Mostrar todos da cidade selecionada
+        where.city_id = city_id;
+      }
+      // Se não tem city_id, mostrar todos os usuários (sem filtro de cidade)
+    } else if (context.isRegional()) {
+      // Regional: mostrar todos os usuários da SUA cidade
+      const userCityId = context.cityId;
+      if (userCityId) {
+        where.city_id = userCityId;
+      }
+    } else if (context.isFranchisee()) {
+      // Franchisee: mostrar todos os usuários da sua cidade
+      const userCityId = context.cityId;
+      if (userCityId) {
+        where.city_id = userCityId;
+      }
+    }
+
+    console.log('🔍 [ATTENDANTS DEBUG] Final where:', JSON.stringify(where, null, 2));
+
+    const users = await prisma.appUser.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        city_id: true,
+        role: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    console.log('🔍 [ATTENDANTS DEBUG] Users found:', users.length);
+
+    return reply.status(200).send({
+      success: true,
+      data: users,
+    });
+  });
 };
 
 export default usersRoutes;
