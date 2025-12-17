@@ -172,11 +172,12 @@ model AppUser {
 }
 
 model City {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  slug        String   @unique
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  slug            String   @unique
+  plugsign_token  String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   // Relações inversas
   users             AppUser[]

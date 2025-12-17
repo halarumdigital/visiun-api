@@ -595,6 +595,77 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * POST /api/users/:id/set-password
+   * Definir senha específica por admin
+   */
+  app.post('/:id/set-password', {
+    preHandler: [authMiddleware, requireMasterOrAdmin()],
+    schema: {
+      description: 'Definir uma senha específica para um usuário (apenas Admin)',
+      tags: ['Usuários'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'ID do usuário' },
+        },
+      },
+      body: {
+        type: 'object',
+        required: ['newPassword'],
+        properties: {
+          newPassword: { type: 'string', minLength: 6, description: 'Nova senha (mínimo 6 caracteres)' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { newPassword } = request.body as { newPassword: string };
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestError('A senha deve ter pelo menos 6 caracteres');
+    }
+
+    const existingUser = await prisma.appUser.findUnique({
+      where: { id },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundError('Usuário não encontrado');
+    }
+
+    // Hash da nova senha
+    const passwordHash = await authService.hashPassword(newPassword);
+
+    await prisma.appUser.update({
+      where: { id },
+      data: { password_hash: passwordHash },
+    });
+
+    await auditService.logFromRequest(
+      request,
+      AuditActions.PASSWORD_RESET,
+      'user',
+      id
+    );
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Senha definida com sucesso',
+    });
+  });
+
+  /**
    * PATCH /api/users/:id/status
    * Alterar status do usuário
    */
