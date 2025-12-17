@@ -184,6 +184,7 @@ model City {
   contracts         GeneratedContract[]
   rental_plans      RentalPlan[]
   survey_responses  SurveyResponse[]
+  campaign_responses CampaignResponse[]
 
   @@map("cities")
 }
@@ -218,6 +219,7 @@ model Franchisee {
   recorrentes          LancamentoRecorrente[]
   vistorias            Vistoria[]
   survey_responses     SurveyResponse[]
+  campaign_responses   CampaignResponse[]
 
   @@index([city_id])
   @@index([cnpj])
@@ -830,7 +832,7 @@ model SurveyRating {
   @@map("survey_ratings")
 }
 
-// Tabela de Campanhas
+// Tabela de Campanhas (Marketing/WhatsApp)
 model Campaign {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name            String
@@ -845,6 +847,51 @@ model Campaign {
   updated_at      DateTime @updatedAt
 
   @@map("campaigns")
+}
+
+// Tabelas de Pesquisa de Campanhas (Votação de Franqueados)
+model CampaignSurvey {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  description      String?
+  campaign_details String?
+  launch_period    String
+  start_date       DateTime @db.Timestamptz
+  end_date         DateTime @db.Timestamptz
+  status           String   @default("draft")
+  created_by       String   @db.Uuid
+  created_at       DateTime? @default(now()) @db.Timestamptz
+  updated_at       DateTime? @default(now()) @db.Timestamptz
+
+  // Relações inversas
+  responses        CampaignResponse[]
+
+  @@map("campaign_surveys")
+}
+
+model CampaignResponse {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id      String    @db.Uuid
+  franchisee_id    String    @db.Uuid
+  regional_user_id String?   @db.Uuid
+  city_id          String    @db.Uuid
+  vote             String    @default("accepted")
+  observations     String?
+  status           String    @default("pending")
+  completed_at     DateTime? @db.Timestamptz
+  created_at       DateTime? @default(now()) @db.Timestamptz
+  updated_at       DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  campaign         CampaignSurvey @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  franchisee       Franchisee     @relation(fields: [franchisee_id], references: [id])
+  city             City           @relation(fields: [city_id], references: [id])
+
+  @@unique([campaign_id, franchisee_id])
+  @@index([campaign_id])
+  @@index([franchisee_id])
+  @@index([city_id])
+  @@map("campaign_responses")
 }
 
 // Tabela de Instâncias Evolution (WhatsApp)
