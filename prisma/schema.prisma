@@ -160,6 +160,9 @@ model AppUser {
   created_surveys         SatisfactionSurvey[]
   survey_responses_as_franchisee SurveyResponse[] @relation("SurveyFranchiseeUser")
   survey_responses_as_regional   SurveyResponse[] @relation("SurveyRegionalUser")
+  suggestions             Suggestion[]
+  suggestion_reactions    SuggestionReaction[]
+  roadmap_items           RoadmapItem[] @relation("RoadmapCreator")
 
   @@index([email])
   @@index([city_id])
@@ -932,13 +935,54 @@ model Suggestion {
   title           String
   description     String
   category        String?
-  status          String   @default("pending")
-  votes           Int      @default(0)
+  status          String   @default("open")
   admin_response  String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
+  // Relações
+  user            AppUser?  @relation(fields: [user_id], references: [id])
+  reactions       SuggestionReaction[]
+
   @@map("suggestions")
+}
+
+model SuggestionReaction {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  suggestion_id   String   @db.Uuid
+  user_id         String   @db.Uuid
+  reaction_type   String   // 'like' ou 'dislike'
+  created_at      DateTime @default(now())
+
+  // Relações
+  suggestion      Suggestion @relation(fields: [suggestion_id], references: [id], onDelete: Cascade)
+  user            AppUser    @relation(fields: [user_id], references: [id])
+
+  @@unique([suggestion_id, user_id])
+  @@index([suggestion_id])
+  @@index([user_id])
+  @@map("suggestion_reactions")
+}
+
+model RoadmapItem {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  description     String
+  status          String    @default("planned") // planned, in_progress, completed, cancelled
+  priority        String    @default("medium")  // low, medium, high, critical
+  estimated_date  DateTime? @db.Date
+  completed_date  DateTime?
+  order_index     Int       @default(0)
+  created_by      String?   @db.Uuid
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  // Relações
+  creator         AppUser?  @relation("RoadmapCreator", fields: [created_by], references: [id])
+
+  @@index([status])
+  @@index([priority])
+  @@map("roadmap_items")
 }
 
 // Tabela de Leads
