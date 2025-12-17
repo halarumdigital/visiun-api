@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rbac } from '../middleware/rbac.js';
-import { BadRequestError, NotFoundError } from '../utils/errors.js';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors.js';
 import { getContext } from '../utils/context.js';
 
 // Swagger Schemas
@@ -275,6 +275,296 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
         count: plates.length,
         plates,
       },
+    });
+  });
+  /**
+   * POST /api/franchisees
+   * Criar um franqueado
+   */
+  app.post('/', {
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br', 'regional'] })],
+    schema: {
+      description: 'Criar um novo franqueado',
+      tags: ['Franqueados'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          cnpj: { type: 'string', nullable: true },
+          company_name: { type: 'string', nullable: true },
+          fantasy_name: { type: 'string', nullable: true },
+          cpf: { type: 'string', nullable: true },
+          endereco: { type: 'string', nullable: true },
+          email: { type: 'string', nullable: true },
+          whatsapp_01: { type: 'string', nullable: true },
+          whatsapp_02: { type: 'string', nullable: true },
+          city_id: { type: 'string', format: 'uuid' },
+          status: { type: 'string' },
+          royalties_percentage: { type: 'number', nullable: true },
+          moto_limit: { type: 'number', nullable: true },
+        },
+        required: ['city_id'],
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: franchiseeResponseSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const body = createFranchiseeSchema.parse(request.body);
+
+    // Regional só pode criar franqueados na sua cidade
+    if (context.role === 'regional' && body.city_id !== context.cityId) {
+      throw new ForbiddenError('Regional só pode criar franqueados na sua cidade');
+    }
+
+    const franchisee = await prisma.franchisee.create({
+      data: {
+        cnpj: body.cnpj,
+        company_name: body.company_name,
+        fantasy_name: body.fantasy_name,
+        cpf: body.cpf,
+        endereco: body.endereco,
+        email: body.email,
+        whatsapp_01: body.whatsapp_01,
+        whatsapp_02: body.whatsapp_02,
+        city_id: body.city_id,
+        status: body.status || 'active',
+        royalties_percentage: body.royalties_percentage,
+        moto_limit: body.moto_limit,
+        user_id: body.user_id,
+      },
+    });
+
+    return reply.status(201).send({
+      success: true,
+      data: {
+        ...franchisee,
+        royalties_percentage: franchisee.royalties_percentage ? Number(franchisee.royalties_percentage) : null,
+      },
+    });
+  });
+
+  /**
+   * GET /api/franchisees/:id
+   * Buscar um franqueado pelo ID
+   */
+  app.get('/:id', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Buscar franqueado por ID',
+      tags: ['Franqueados'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+        required: ['id'],
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: franchiseeResponseSchema,
+          },
+        },
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const franchisee = await prisma.franchisee.findUnique({
+      where: { id },
+      include: {
+        city: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!franchisee) {
+      throw new NotFoundError('Franqueado não encontrado');
+    }
+
+    return reply.status(200).send({
+      success: true,
+      data: {
+        ...franchisee,
+        royalties_percentage: franchisee.royalties_percentage ? Number(franchisee.royalties_percentage) : null,
+      },
+    });
+  });
+
+  /**
+   * PUT /api/franchisees/:id
+   * Atualizar um franqueado
+   */
+  app.put('/:id', {
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br', 'regional'] })],
+    schema: {
+      description: 'Atualizar um franqueado',
+      tags: ['Franqueados'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+        required: ['id'],
+      },
+      body: {
+        type: 'object',
+        properties: {
+          cnpj: { type: 'string', nullable: true },
+          company_name: { type: 'string', nullable: true },
+          fantasy_name: { type: 'string', nullable: true },
+          cpf: { type: 'string', nullable: true },
+          endereco: { type: 'string', nullable: true },
+          email: { type: 'string', nullable: true },
+          whatsapp_01: { type: 'string', nullable: true },
+          whatsapp_02: { type: 'string', nullable: true },
+          city_id: { type: 'string', format: 'uuid' },
+          status: { type: 'string' },
+          royalties_percentage: { type: 'number', nullable: true },
+          moto_limit: { type: 'number', nullable: true },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: franchiseeResponseSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const { id } = request.params as { id: string };
+    const body = createFranchiseeSchema.partial().parse(request.body);
+
+    // Verificar se franqueado existe
+    const existing = await prisma.franchisee.findUnique({
+      where: { id },
+      select: { id: true, city_id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundError('Franqueado não encontrado');
+    }
+
+    // Regional só pode editar franqueados da sua cidade
+    if (context.role === 'regional' && existing.city_id !== context.cityId) {
+      throw new ForbiddenError('Regional só pode editar franqueados da sua cidade');
+    }
+
+    // Regional não pode mudar cidade do franqueado para outra cidade
+    if (context.role === 'regional' && body.city_id && body.city_id !== context.cityId) {
+      throw new ForbiddenError('Regional não pode mover franqueado para outra cidade');
+    }
+
+    const franchisee = await prisma.franchisee.update({
+      where: { id },
+      data: {
+        cnpj: body.cnpj,
+        company_name: body.company_name,
+        fantasy_name: body.fantasy_name,
+        cpf: body.cpf,
+        endereco: body.endereco,
+        email: body.email,
+        whatsapp_01: body.whatsapp_01,
+        whatsapp_02: body.whatsapp_02,
+        city_id: body.city_id,
+        status: body.status,
+        royalties_percentage: body.royalties_percentage,
+        moto_limit: body.moto_limit,
+        user_id: body.user_id,
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: {
+        ...franchisee,
+        royalties_percentage: franchisee.royalties_percentage ? Number(franchisee.royalties_percentage) : null,
+      },
+    });
+  });
+
+  /**
+   * DELETE /api/franchisees/:id
+   * Deletar um franqueado
+   */
+  app.delete('/:id', {
+    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
+    schema: {
+      description: 'Deletar um franqueado',
+      tags: ['Franqueados'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+        required: ['id'],
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    // Verificar se franqueado existe
+    const existing = await prisma.franchisee.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundError('Franqueado não encontrado');
+    }
+
+    // Verificar se há motos vinculadas
+    const motorcycleCount = await prisma.motorcycle.count({
+      where: { franchisee_id: id },
+    });
+
+    if (motorcycleCount > 0) {
+      throw new BadRequestError(`Não é possível excluir o franqueado. Existem ${motorcycleCount} motos vinculadas.`);
+    }
+
+    await prisma.franchisee.delete({
+      where: { id },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Franqueado excluído com sucesso',
     });
   });
 };
