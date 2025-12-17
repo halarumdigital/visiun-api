@@ -695,7 +695,7 @@ model Vistoria {
   locadora        String?
   locatario       String?
   observations    String?
-  data_hora       String?
+  data_hora       DateTime?
   foto_1_path     String?
   foto_2_path     String?
   foto_3_path     String?
