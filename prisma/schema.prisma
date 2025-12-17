@@ -157,6 +157,9 @@ model AppUser {
   attended_rentals        Rental[]      @relation("AttendantUser")
   created_rentals         Rental[]      @relation("CreatorUser")
   audit_logs              AuditLog[]
+  created_surveys         SatisfactionSurvey[]
+  survey_responses_as_franchisee SurveyResponse[] @relation("SurveyFranchiseeUser")
+  survey_responses_as_regional   SurveyResponse[] @relation("SurveyRegionalUser")
 
   @@index([email])
   @@index([city_id])
@@ -173,13 +176,14 @@ model City {
   updated_at  DateTime @updatedAt
 
   // Relações inversas
-  users         AppUser[]
-  franchisees   Franchisee[]
-  motorcycles   Motorcycle[]
-  rentals       Rental[]
-  vistorias     Vistoria[]
-  contracts     GeneratedContract[]
-  rental_plans  RentalPlan[]
+  users             AppUser[]
+  franchisees       Franchisee[]
+  motorcycles       Motorcycle[]
+  rentals           Rental[]
+  vistorias         Vistoria[]
+  contracts         GeneratedContract[]
+  rental_plans      RentalPlan[]
+  survey_responses  SurveyResponse[]
 
   @@map("cities")
 }
@@ -213,6 +217,7 @@ model Franchisee {
   financeiros          Financeiro[]
   recorrentes          LancamentoRecorrente[]
   vistorias            Vistoria[]
+  survey_responses     SurveyResponse[]
 
   @@index([city_id])
   @@index([cnpj])
@@ -745,39 +750,84 @@ model AuditLog {
 
 // Tabelas de Pesquisa de Satisfação
 model SatisfactionSurvey {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name            String
-  description     String?
-  questions       Json
-  is_active       Boolean  @default(true)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  description       String?
+  evaluation_period String
+  start_date        DateTime @db.Timestamptz
+  end_date          DateTime @db.Timestamptz
+  status            String   @default("draft")
+  created_by        String   @db.Uuid
+  created_at        DateTime? @default(now()) @db.Timestamptz
+  updated_at        DateTime? @default(now()) @db.Timestamptz
 
-  // Relações inversas
-  responses       SurveyResponse[]
+  // Relações
+  creator           AppUser  @relation(fields: [created_by], references: [id])
+  criteria          SurveyCriteria[]
+  responses         SurveyResponse[]
 
   @@map("satisfaction_surveys")
 }
 
-model SurveyResponse {
+model SurveyCriteria {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   survey_id   String   @db.Uuid
-  rental_id   String?  @db.Uuid
-  client_name String?
-  client_phone String?
-  answers     Json
-  rating      Int?
-  comments    String?
-  status      String   @default("pending")
-  responded_at DateTime?
-  created_at  DateTime @default(now())
+  name        String
+  description String?
+  order_index Int      @default(0)
+  created_at  DateTime? @default(now()) @db.Timestamptz
 
   // Relações
-  survey      SatisfactionSurvey @relation(fields: [survey_id], references: [id])
+  survey      SatisfactionSurvey @relation(fields: [survey_id], references: [id], onDelete: Cascade)
+  ratings     SurveyRating[]
 
   @@index([survey_id])
-  @@index([rental_id])
+  @@map("survey_criteria")
+}
+
+model SurveyResponse {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  survey_id         String    @db.Uuid
+  franchisee_id     String    @db.Uuid
+  franchisee_user_id String   @db.Uuid
+  regional_user_id  String?   @db.Uuid
+  city_id           String    @db.Uuid
+  status            String    @default("pending")
+  completed_at      DateTime? @db.Timestamptz
+  general_comments  String?
+  created_at        DateTime? @default(now()) @db.Timestamptz
+  updated_at        DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  survey            SatisfactionSurvey @relation(fields: [survey_id], references: [id], onDelete: Cascade)
+  franchisee        Franchisee         @relation(fields: [franchisee_id], references: [id])
+  franchiseeUser    AppUser            @relation("SurveyFranchiseeUser", fields: [franchisee_user_id], references: [id])
+  regionalUser      AppUser?           @relation("SurveyRegionalUser", fields: [regional_user_id], references: [id])
+  city              City               @relation(fields: [city_id], references: [id])
+  ratings           SurveyRating[]
+
+  @@index([survey_id])
+  @@index([franchisee_id])
+  @@index([city_id])
   @@map("survey_responses")
+}
+
+model SurveyRating {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  response_id      String   @db.Uuid
+  criteria_id      String   @db.Uuid
+  rating           Int
+  specific_comment String?
+  created_at       DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  response         SurveyResponse @relation(fields: [response_id], references: [id], onDelete: Cascade)
+  criteria         SurveyCriteria @relation(fields: [criteria_id], references: [id], onDelete: Cascade)
+
+  @@unique([response_id, criteria_id])
+  @@index([response_id])
+  @@index([criteria_id])
+  @@map("survey_ratings")
 }
 
 // Tabela de Campanhas
