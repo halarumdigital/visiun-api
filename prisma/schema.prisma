@@ -123,10 +123,10 @@ model AppUser {
   id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                   String        @unique
   name                    String?
-  role                    UserRole      @default(franchisee)
-  regional_type           RegionalType?
-  master_type             MasterType?
-  status                  UserStatus    @default(pending)
+  role                    String        @default("franchisee")
+  regional_type           String?
+  master_type             String?
+  status                  String        @default("pending")
   city_id                 String?       @db.Uuid
   franchisee_id           String?       @db.Uuid
   avatar_url              String?
@@ -155,6 +155,7 @@ model AppUser {
   created_vistorias       Vistoria[]    @relation("CreatedByUser")
   created_contracts       GeneratedContract[] @relation("CreatedByUser")
   attended_rentals        Rental[]      @relation("AttendantUser")
+  created_rentals         Rental[]      @relation("CreatorUser")
   audit_logs              AuditLog[]
 
   @@index([email])
@@ -172,12 +173,13 @@ model City {
   updated_at  DateTime @updatedAt
 
   // Relações inversas
-  users       AppUser[]
-  franchisees Franchisee[]
-  motorcycles Motorcycle[]
-  rentals     Rental[]
-  vistorias   Vistoria[]
-  contracts   GeneratedContract[]
+  users         AppUser[]
+  franchisees   Franchisee[]
+  motorcycles   Motorcycle[]
+  rentals       Rental[]
+  vistorias     Vistoria[]
+  contracts     GeneratedContract[]
+  rental_plans  RentalPlan[]
 
   @@map("cities")
 }
@@ -227,9 +229,9 @@ model Motorcycle {
   ano                     Int?
   cor                     String?
   quilometragem           Int?
-  status                  MotorcycleStatus @default(active)
+  status                  String           @default("active")
   codigo_cs               String?
-  tipo                    MotorcycleType?
+  tipo                    String?
   valor_semanal           Decimal?         @db.Decimal(10, 2)
   data_ultima_mov         DateTime?
   data_criacao            DateTime?
@@ -304,7 +306,7 @@ model Client {
   cnpj                String?
   razao_social        String?
   cpf_responsavel     String?
-  status              ClientStatus @default(ativo)
+  status              String       @default("ativo")
   franchisee_id       String?      @db.Uuid
   city_id             String?      @db.Uuid
   created_at          DateTime     @default(now())
@@ -315,7 +317,6 @@ model Client {
 
   // Relações inversas
   drivers             ClientDriver[]
-  rentals             Rental[]
   vistorias           Vistoria[]
 
   @@index([cpf])
@@ -344,12 +345,15 @@ model ClientDriver {
   cnh_expiry_date     DateTime?    @db.Date
   cnh_document_url    String?
   residence_proof_url String?
-  status              DriverStatus @default(active)
+  status              String       @default("active")
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
   // Relações
   client              Client       @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  // Relações inversas
+  rentals             Rental[]
 
   @@index([client_id])
   @@index([cpf])
@@ -357,36 +361,43 @@ model ClientDriver {
 }
 
 model RentalPlan {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  description String?
-  daily_rate  Decimal  @db.Decimal(10, 2)
-  min_days    Int?
-  max_days    Int?
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  daily_rate      Decimal  @db.Decimal(10, 2)
+  weekly_rate     Decimal? @db.Decimal(10, 2)
+  monthly_rate    Decimal? @db.Decimal(10, 2)
+  minimum_days    Int?
+  maximum_days    Int?
+  deposit_amount  Decimal? @db.Decimal(10, 2)
+  is_active       Boolean  @default(true)
+  status          String?
+  city_id         String?  @db.Uuid
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relações
+  city            City?    @relation(fields: [city_id], references: [id])
 
   // Relações inversas
-  rentals     Rental[]
+  rentals         Rental[]
 
   @@map("rental_plans")
 }
 
 model Rental {
   id                        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  client_id                 String?      @db.Uuid
   client_name               String
+  client_cpf                String
   client_email              String?
   client_phone              String
-  client_cpf                String
+  client_address            String?
   client_address_street     String?
   client_address_number     String?
-  client_address_complement String?
-  client_address_neighborhood String?
   client_address_city       String?
   client_address_state      String?
   client_address_zip_code   String?
+  driver_id                 String?      @db.Uuid
   driver_name               String?
   driver_cpf                String?
   driver_phone              String?
@@ -404,25 +415,29 @@ model Rental {
   plan_id                   String?      @db.Uuid
   start_date                DateTime     @db.Date
   end_date                  DateTime?    @db.Date
+  actual_return_date        DateTime?    @db.Date
   km_inicial                Int?
   km_final                  Int?
   total_days                Int?
   daily_rate                Decimal      @db.Decimal(10, 2)
   total_amount              Decimal?     @db.Decimal(10, 2)
   deposit_amount            Decimal?     @db.Decimal(10, 2)
-  status                    RentalStatus @default(active)
-  lead_source               LeadSource?
-  observations              String?
+  status                    String       @default("active")
+  payment_status            String?
+  lead_source               String?
+  notes                     String?
+  created_by                String?      @db.Uuid
   created_at                DateTime     @default(now())
   updated_at                DateTime     @updatedAt
 
   // Relações
-  client                    Client?      @relation(fields: [client_id], references: [id])
   motorcycle                Motorcycle   @relation(fields: [motorcycle_id], references: [id])
   franchisee                Franchisee   @relation(fields: [franchisee_id], references: [id])
   city                      City?        @relation(fields: [city_id], references: [id])
   attendant                 AppUser?     @relation("AttendantUser", fields: [attendant_id], references: [id])
   plan                      RentalPlan?  @relation(fields: [plan_id], references: [id])
+  driver                    ClientDriver? @relation(fields: [driver_id], references: [id])
+  creator                   AppUser?     @relation("CreatorUser", fields: [created_by], references: [id])
 
   // Relações inversas
   vistorias                 Vistoria[]
@@ -447,7 +462,7 @@ model Distrato {
   observacoes         String?
   signature_request_id String?
   signed_url          String?
-  status              ContractStatus @default(draft)
+  status              String         @default("draft")
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
@@ -525,7 +540,7 @@ model GeneratedContract {
   contract_number      String         @unique
   contract_data        Json
   pdf_url              String?
-  status               ContractStatus @default(draft)
+  status               String         @default("draft")
   signature_request_id String?
   batch_id             String?
   signed_at            DateTime?
@@ -550,7 +565,7 @@ model GeneratedContract {
 model CategoriaFinanceiro {
   id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nome        String
-  tipo        CategoriaTipo
+  tipo        String
   descricao   String?
   ativo       Boolean      @default(true)
   created_at  DateTime     @default(now())
@@ -566,7 +581,7 @@ model CategoriaFinanceiro {
 model Financeiro {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   franchisee_id    String         @db.Uuid
-  tipo             FinanceiroTipo
+  tipo             String
   placa            String?
   motorcycle_id    String?        @db.Uuid
   categoria_id     String?        @db.Uuid
@@ -599,14 +614,14 @@ model Financeiro {
 model LancamentoRecorrente {
   id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   franchisee_id   String              @db.Uuid
-  tipo            FinanceiroTipo
+  tipo            String
   placa           String?
   motorcycle_id   String?             @db.Uuid
   categoria_id    String?             @db.Uuid
   locatario       String?
   valor           Decimal             @db.Decimal(10, 2)
   descricao       String
-  frequencia      FrequenciaRecorrente
+  frequencia      String
   dia_vencimento  Int?
   data_inicio     DateTime            @db.Date
   data_fim        DateTime?           @db.Date
@@ -675,8 +690,8 @@ model Vistoria {
   franchisee_id   String?       @db.Uuid
   client_id       String?       @db.Uuid
   inspection_date DateTime      @db.Date
-  inspection_type VistoriaType
-  status          VistoriaStatus @default(pendente)
+  inspection_type String
+  status          String         @default("pendente")
   placa           String?
   locadora        String?
   locatario       String?
@@ -935,7 +950,7 @@ model DepositReceipt {
   receipt_number       String?
   pdf_url              String?
   signature_request_id String?
-  status               ContractStatus @default(draft)
+  status               String         @default("draft")
   created_at           DateTime @default(now())
   updated_at           DateTime @updatedAt
 

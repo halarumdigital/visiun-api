@@ -18,6 +18,8 @@ import financeiroRoutes from './routes/financeiro.js';
 import uploadRoutes from './routes/upload.js';
 import webhooksRoutes from './routes/webhooks.js';
 import integrationsRoutes from './routes/integrations/index.js';
+import citiesRoutes from './routes/cities.js';
+import franchiseesRoutes from './routes/franchisees.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -126,6 +128,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(uploadRoutes, { prefix: '/api/upload' });
   await app.register(webhooksRoutes, { prefix: '/api/webhooks' });
   await app.register(integrationsRoutes, { prefix: '/api/integrations' });
+  await app.register(citiesRoutes, { prefix: '/api/cities' });
+  await app.register(franchiseesRoutes, { prefix: '/api/franchisees' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {
