@@ -265,8 +265,19 @@ export class AuthService {
     const user = await prisma.appUser.findUnique({
       where: { id: userId },
       include: {
-        city: true,
-        franchisee: true,
+        city: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        franchisee: {
+          select: {
+            id: true,
+            fantasy_name: true,
+            company_name: true,
+          },
+        },
       },
     });
 
@@ -285,8 +296,14 @@ export class AuthService {
       franchiseeId: user.franchisee_id,
       status: user.status,
       avatarUrl: user.avatar_url,
-      city: user.city,
-      franchisee: user.franchisee,
+      city: user.city ? {
+        id: user.city.id,
+        name: user.city.name,
+      } : null,
+      franchisee: user.franchisee ? {
+        id: user.franchisee.id,
+        name: user.franchisee.fantasy_name || user.franchisee.company_name,
+      } : null,
       createdAt: user.created_at,
       lastLogin: user.last_login,
     };
