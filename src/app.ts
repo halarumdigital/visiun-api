@@ -29,6 +29,7 @@ import satisfactionSurveysRoutes from './routes/satisfaction-surveys.js';
 import campaignSurveysRoutes from './routes/campaign-surveys.js';
 import suggestionsRoutes from './routes/suggestions.js';
 import motorcycleModelsRoutes from './routes/motorcycle-models.js';
+import distratosRoutes from './routes/distratos.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -196,6 +197,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(campaignSurveysRoutes, { prefix: '/api/campaign-surveys' });
   await app.register(suggestionsRoutes, { prefix: '/api/suggestions' });
   await app.register(motorcycleModelsRoutes, { prefix: '/api/motorcycle-models' });
+  await app.register(distratosRoutes, { prefix: '/api/distratos' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {

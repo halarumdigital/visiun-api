@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma db push:*)",
+      "Bash(./node_modules/.bin/prisma db push:*)",
+      "Bash(export PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\")",
+      "Bash(export PGPASSWORD='@0dJ2m0q82320')",
+      "Bash(psql:*)",
+      "Bash(npx prisma db execute:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(node check-users.js:*)",
+      "Bash(node set-all-passwords.js:*)",
+      "Bash(node test-login.js:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

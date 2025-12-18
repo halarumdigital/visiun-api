@@ -11,7 +11,14 @@
       "Bash(node check-users.js:*)",
       "Bash(node set-all-passwords.js:*)",
       "Bash(node test-login.js:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npx tsc --noEmit)",
+      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npx prisma generate)",
+      "Bash(xargs ls:*)",
+      "Bash(grep:*)",
+      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/node /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx tsc:*)",
+      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx prisma generate:*)"
     ]
   }
 }

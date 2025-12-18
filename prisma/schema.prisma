@@ -190,6 +190,7 @@ model City {
   rental_plans      RentalPlan[]
   survey_responses  SurveyResponse[]
   campaign_responses CampaignResponse[]
+  distratos         Distrato[]
 
   @@map("cities")
 }
@@ -225,6 +226,7 @@ model Franchisee {
   vistorias            Vistoria[]
   survey_responses     SurveyResponse[]
   campaign_responses   CampaignResponse[]
+  distratos            Distrato[]
 
   @@index([city_id])
   @@index([cnpj])
@@ -466,7 +468,6 @@ model Rental {
   // Relações inversas
   vistorias                 Vistoria[]
   contracts                 GeneratedContract[]
-  distratos                 Distrato[]
 
   @@index([franchisee_id])
   @@index([city_id])
@@ -477,27 +478,31 @@ model Rental {
 }
 
 model Distrato {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  rental_id           String   @db.Uuid
-  motivo              String
-  data_distrato       DateTime @db.Date
-  km_final            Int?
-  valor_devolucao     Decimal? @db.Decimal(10, 2)
-  observacoes         String?
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  placa                String
+  franqueado           String
+  inicio_ctt           DateTime    @db.Date
+  fim_ctt              DateTime    @db.Date
+  motivo               String
+  causa                String
+  franchisee_id        String?     @db.Uuid
+  city_id              String?     @db.Uuid
+  pdf_url              String?
+  status               String      @default("draft")
   signature_request_id String?
-  signed_url          String?
-  status              String         @default("draft")
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  created_at           DateTime?   @default(now())
+  updated_at           DateTime?   @updatedAt
 
   // Relações
-  rental              Rental   @relation(fields: [rental_id], references: [id])
+  franchisee      Franchisee? @relation(fields: [franchisee_id], references: [id])
+  city            City?       @relation(fields: [city_id], references: [id])
 
   // Relações inversas
-  vistorias           Vistoria[]
+  vistorias       Vistoria[]
 
-  @@index([rental_id])
-  @@map("distratos")
+  @@index([franchisee_id])
+  @@index([city_id])
+  @@map("distratos_locacoes")
 }
 
 model ContractType {

@@ -297,7 +297,6 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         driver: true,
         vistorias: true,
         contracts: true,
-        distratos: true,
       },
     });
 
