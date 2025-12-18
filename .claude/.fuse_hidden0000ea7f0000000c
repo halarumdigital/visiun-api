@@ -18,15 +18,7 @@
       "Bash(xargs ls:*)",
       "Bash(grep:*)",
       "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/node /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx tsc:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx prisma generate:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx tsc:*)",
-      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/node /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx tsc:*)",
-      "Bash(node --version:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx prisma db push:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx prisma db execute:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx prisma generate:*)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx tsc:*)",
-      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/node ./node_modules/.bin/tsc:*)"
+      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" /home/gilliard/.nvm/versions/node/v22.21.1/bin/npx prisma generate:*)"
     ]
   }
 }

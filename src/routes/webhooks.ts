@@ -311,6 +311,7 @@ async function handleDocumentSigned(payload: any): Promise<void> {
     where: { signature_request_id: documentKey },
     data: {
       status: 'signed',
+      signed_at: signedAt,
     },
   });
 

@@ -278,56 +278,67 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
 
     let lastError: any = null;
 
+    // Lista de endpoints para tentar (PlugSign pode usar diferentes formatos)
+    const endpointsToTry = [
+      `https://app.plugsign.com.br/api/requests/${documentKey}/download`,
+      `https://app.plugsign.com.br/api/files/download/${documentKey}`,
+      `https://app.plugsign.com.br/api/requests/${documentKey}/pdf`,
+      `https://app.plugsign.com.br/api/documents/${documentKey}/download`,
+    ];
+
+    // Adicionar variações de chave para cada endpoint
     for (const keyToTry of keyVariations) {
-      try {
-        const downloadUrl = `https://app.plugsign.com.br/api/files/download/${keyToTry}`;
+      for (const baseEndpoint of [
+        `https://app.plugsign.com.br/api/requests/${keyToTry}/download`,
+        `https://app.plugsign.com.br/api/files/download/${keyToTry}`,
+      ]) {
+        try {
+          logger.info({ keyToTry, downloadUrl: baseEndpoint }, 'PlugSign: tentando download');
 
-        logger.info({ keyToTry, downloadUrl }, 'PlugSign: tentando download');
+          const response = await axios.get(baseEndpoint, {
+            headers: {
+              'Authorization': `Bearer ${apiToken}`,
+              'Accept': 'application/pdf'
+            },
+            responseType: 'arraybuffer',
+            timeout: 60000,
+          });
 
-        const response = await axios.get(downloadUrl, {
-          headers: {
-            'Authorization': `Bearer ${apiToken}`,
-            'Accept': 'application/pdf'
-          },
-          responseType: 'arraybuffer',
-          timeout: 60000,
-        });
+          // Se chegou aqui, deu certo!
+          logger.info({ originalKey: documentKey, usedKey: keyToTry, endpoint: baseEndpoint }, 'PlugSign: download bem-sucedido');
 
-        // Se chegou aqui, deu certo!
-        logger.info({ originalKey: documentKey, usedKey: keyToTry }, 'PlugSign: download bem-sucedido');
+          await auditService.logFromRequest(
+            request,
+            AuditActions.PLUGSIGN_API_CALL,
+            'document',
+            keyToTry,
+            undefined,
+            { action: 'download', originalKey: documentKey, usedKey: keyToTry }
+          );
 
-        await auditService.logFromRequest(
-          request,
-          AuditActions.PLUGSIGN_API_CALL,
-          'document',
-          keyToTry,
-          undefined,
-          { action: 'download', originalKey: documentKey, usedKey: keyToTry }
-        );
+          reply.header('Content-Type', 'application/pdf');
+          reply.header('Content-Disposition', `attachment; filename="documento-${keyToTry}.pdf"`);
 
-        reply.header('Content-Type', 'application/pdf');
-        reply.header('Content-Disposition', `attachment; filename="documento-${keyToTry}.pdf"`);
+          return reply.send(Buffer.from(response.data));
 
-        return reply.send(Buffer.from(response.data));
+        } catch (error) {
+          const axiosError = error as AxiosError;
+          lastError = axiosError;
 
-      } catch (error) {
-        const axiosError = error as AxiosError;
-        lastError = axiosError;
+          // Se for 404, tentar próximo endpoint/variação
+          if (axiosError.response?.status === 404 || axiosError.response?.status === 400) {
+            logger.info({ keyToTry, endpoint: baseEndpoint, status: axiosError.response?.status }, 'PlugSign: documento não encontrado com esta chave/endpoint');
+            continue;
+          }
 
-        // Se for 404, tentar próxima variação
-        if (axiosError.response?.status === 404 || axiosError.response?.status === 400) {
-          logger.info({ keyToTry, status: axiosError.response?.status }, 'PlugSign: documento não encontrado com esta chave, tentando próxima');
-          continue;
+          // Outros erros, logar mas continuar tentando
+          logger.warn({ error: axiosError.message, keyToTry, endpoint: baseEndpoint }, 'PlugSign download error, tentando próximo');
         }
-
-        // Outros erros, logar e parar
-        logger.error({ error: axiosError.message, keyToTry }, 'PlugSign download error');
-        throw new ServiceUnavailableError('Erro ao baixar documento');
       }
     }
 
     // Se chegou aqui, nenhuma variação funcionou
-    logger.error({ documentKey, triedVariations: keyVariations }, 'PlugSign: documento não encontrado em nenhuma variação');
+    logger.error({ documentKey, triedVariations: keyVariations }, 'PlugSign: documento não encontrado em nenhuma variação/endpoint');
     throw new BadRequestError('Documento não encontrado');
   });
 
@@ -373,6 +384,94 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
         signedAt: (document as any).signed_at || null,
       },
     });
+  });
+
+  /**
+   * Buscar informações do arquivo no PlugSign
+   * GET /api/integrations/plugsign-file-info/:requestId
+   * Retorna informações do arquivo incluindo a chave de download
+   */
+  app.get('/plugsign-file-info/:requestId', {
+    preHandler: [authMiddleware, rbac()],
+  }, async (request, reply) => {
+    const { requestId } = request.params as { requestId: string };
+    const user = request.user;
+    const cityId = (request.query as any)?.cityId;
+
+    let apiToken = await getPlugSignToken(app.prisma, user.userId, user.role, cityId);
+
+    if (!apiToken) {
+      if (env.PLUGSIGN_API_KEY && env.PLUGSIGN_API_KEY.length >= 50) {
+        apiToken = env.PLUGSIGN_API_KEY;
+      } else {
+        throw new ServiceUnavailableError('Token PlugSign não encontrado');
+      }
+    }
+
+    try {
+      // Tentar buscar informações do request
+      const infoUrl = `https://app.plugsign.com.br/api/requests/${requestId}`;
+      logger.info({ infoUrl }, 'PlugSign: buscando informações do request');
+
+      const response = await axios.get(infoUrl, {
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Accept': 'application/json',
+        },
+        timeout: 30000,
+      });
+
+      logger.info({
+        requestId,
+        response: JSON.stringify(response.data),
+      }, 'PlugSign: informações do request');
+
+      return reply.status(200).send({
+        success: true,
+        data: response.data,
+      });
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      logger.error({
+        error: axiosError.message,
+        status: axiosError.response?.status,
+        data: axiosError.response?.data,
+      }, 'PlugSign: erro ao buscar informações do request');
+
+      // Se não encontrou no /requests, tentar no /files
+      try {
+        const filesUrl = `https://app.plugsign.com.br/api/files/${requestId}`;
+        logger.info({ filesUrl }, 'PlugSign: tentando buscar no /files');
+
+        const filesResponse = await axios.get(filesUrl, {
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Accept': 'application/json',
+          },
+          timeout: 30000,
+        });
+
+        logger.info({
+          requestId,
+          response: JSON.stringify(filesResponse.data),
+        }, 'PlugSign: informações do arquivo');
+
+        return reply.status(200).send({
+          success: true,
+          data: filesResponse.data,
+        });
+      } catch (error2) {
+        const axiosError2 = error2 as AxiosError;
+        return reply.status(axiosError.response?.status || 500).send({
+          success: false,
+          error: 'Não foi possível obter informações do documento',
+          details: {
+            requestsEndpoint: axiosError.response?.data,
+            filesEndpoint: axiosError2.response?.data,
+          },
+        });
+      }
+    }
   });
 };
 

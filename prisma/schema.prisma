@@ -468,6 +468,7 @@ model Rental {
   // Relações inversas
   vistorias                 Vistoria[]
   contracts                 GeneratedContract[]
+  distratos                 Distrato[]
 
   @@index([franchisee_id])
   @@index([city_id])
@@ -487,21 +488,28 @@ model Distrato {
   causa                String
   franchisee_id        String?     @db.Uuid
   city_id              String?     @db.Uuid
+  rental_id            String?     @db.Uuid
   pdf_url              String?
+  termo_url            String?
   status               String      @default("draft")
   signature_request_id String?
+  document_key         String?     // Chave do documento para download no PlugSign
+  signed_file_url      String?     // URL do documento assinado
+  signed_at            DateTime?   // Data da assinatura
   created_at           DateTime?   @default(now())
   updated_at           DateTime?   @updatedAt
 
   // Relações
   franchisee      Franchisee? @relation(fields: [franchisee_id], references: [id])
   city            City?       @relation(fields: [city_id], references: [id])
+  rental          Rental?     @relation(fields: [rental_id], references: [id])
 
   // Relações inversas
   vistorias       Vistoria[]
 
   @@index([franchisee_id])
   @@index([city_id])
+  @@index([rental_id])
   @@map("distratos_locacoes")
 }
 
