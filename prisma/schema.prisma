@@ -290,6 +290,20 @@ model MotorcycleMovement {
   @@map("motorcycle_movements")
 }
 
+model MotorcycleModel {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brand      String
+  model      String
+  active     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([brand, model])
+  @@index([brand])
+  @@index([active])
+  @@map("motorcycle_models")
+}
+
 model Client {
   id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   full_name           String

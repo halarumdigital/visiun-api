@@ -14,6 +14,7 @@
     "prisma:studio": "prisma studio",
     "prisma:introspect": "prisma db pull",
     "migrate:passwords": "tsx scripts/migratePasswords.ts",
+    "migrate:motorcycle-models": "tsx scripts/runMigration.ts",
     "test": "vitest",
     "test:coverage": "vitest --coverage"
   },
