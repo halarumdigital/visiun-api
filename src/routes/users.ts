@@ -863,6 +863,152 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       data: users,
     });
   });
+
+  // ==========================================
+  // ENDPOINTS DE PERMISSÕES DE MENU
+  // ==========================================
+
+  // GET /users/:id/permissions - Buscar permissões de menu de um usuário
+  app.get('/:id/permissions', {
+    preHandler: [authMiddleware],
+    schema: {
+      tags: ['Usuários'],
+      summary: 'Buscar permissões de menu de um usuário',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+        required: ['id'],
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              additionalProperties: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const user = await prisma.appUser.findUnique({
+      where: { id },
+      select: { menu_permissions: true },
+    });
+
+    if (!user) {
+      throw new NotFoundError('Usuário não encontrado');
+    }
+
+    return reply.status(200).send({
+      success: true,
+      data: (user.menu_permissions as Record<string, boolean>) || {},
+    });
+  });
+
+  // PUT /users/:id/permissions - Atualizar permissões de menu de um usuário
+  // Permite: admin, master_br, ou regional admin (para usuários da mesma cidade)
+  app.put('/:id/permissions', {
+    preHandler: [authMiddleware],
+    schema: {
+      tags: ['Usuários'],
+      summary: 'Atualizar permissões de menu de um usuário',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+        required: ['id'],
+      },
+      body: {
+        type: 'object',
+        additionalProperties: { type: 'boolean' },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: {
+              type: 'object',
+              additionalProperties: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const permissions = request.body as Record<string, boolean>;
+    const currentUser = request.user;
+
+    // Verificar permissões do usuário logado
+    const loggedUser = await prisma.appUser.findUnique({
+      where: { id: currentUser.userId },
+      select: { role: true, regional_type: true, master_type: true, city_id: true },
+    });
+
+    if (!loggedUser) {
+      throw new ForbiddenError('Usuário não autenticado');
+    }
+
+    // Admin e master_br podem editar qualquer usuário
+    const isAdmin = loggedUser.role === 'admin';
+    const isMasterBr = loggedUser.role === 'master_br';
+    const isRegionalAdmin = loggedUser.role === 'regional' && loggedUser.regional_type === 'admin';
+
+    if (!isAdmin && !isMasterBr && !isRegionalAdmin) {
+      throw new ForbiddenError('Você não tem permissão para editar permissões');
+    }
+
+    const existingUser = await prisma.appUser.findUnique({
+      where: { id },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundError('Usuário não encontrado');
+    }
+
+    // Regional admin só pode editar usuários da mesma cidade
+    if (isRegionalAdmin && !isAdmin && !isMasterBr) {
+      if (existingUser.city_id !== loggedUser.city_id) {
+        throw new ForbiddenError('Você só pode editar permissões de usuários da sua cidade');
+      }
+    }
+
+    // Atualizar permissões
+    await prisma.appUser.update({
+      where: { id },
+      data: {
+        menu_permissions: permissions,
+      },
+    });
+
+    // Log de auditoria
+    await auditService.logFromRequest(
+      request,
+      AuditActions.USER_UPDATE,
+      'user',
+      id,
+      {
+        action: 'update_permissions',
+        permissions,
+      }
+    );
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Permissões atualizadas com sucesso',
+      data: permissions,
+    });
+  });
 };
 
 export default usersRoutes;

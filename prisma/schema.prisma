@@ -131,6 +131,7 @@ model AppUser {
   franchisee_id           String?       @db.Uuid
   avatar_url              String?
   plugsign_token          String?
+  menu_permissions        Json?         // Permissões de menu para usuários simples
 
   // Campos de autenticação (novos - migração)
   password_hash           String?
