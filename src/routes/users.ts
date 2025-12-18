@@ -417,11 +417,17 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
     },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+
+    console.log('🔐 [PUT /users/:id] Body recebido:', JSON.stringify(request.body, null, 2));
+
     const body = updateUserSchema.safeParse(request.body);
 
     if (!body.success) {
+      console.log('🔐 [PUT /users/:id] Erro de validação:', body.error.errors);
       throw new BadRequestError(body.error.errors[0].message);
     }
+
+    console.log('🔐 [PUT /users/:id] Body validado:', JSON.stringify(body.data, null, 2));
 
     const existingUser = await prisma.appUser.findUnique({
       where: { id },
@@ -452,17 +458,23 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const updateData = {
+      ...body.data,
+      email: body.data.email?.toLowerCase(),
+    };
+
+    console.log('🔐 [PUT /users/:id] Dados para update:', JSON.stringify(updateData, null, 2));
+
     const user = await prisma.appUser.update({
       where: { id },
-      data: {
-        ...body.data,
-        email: body.data.email?.toLowerCase(),
-      },
+      data: updateData,
       include: {
         city: true,
         franchisee: true,
       },
     });
+
+    console.log('🔐 [PUT /users/:id] Usuário atualizado, plugsign_token:', user.plugsign_token);
 
     await auditService.logFromRequest(
       request,

@@ -9,8 +9,9 @@ import { BadRequestError, ServiceUnavailableError } from '../../utils/errors.js'
 
 /**
  * Helper para buscar token PlugSign do banco de dados
- * - Regional: busca token da tabela app_users
- * - Master BR: busca token da tabela cities (baseado no cityId)
+ * O token SEMPRE vem da tabela cities:
+ * - master_br: usa cityId passado no request
+ * - regional: usa city_id do próprio usuário
  */
 async function getPlugSignToken(
   prisma: any,
@@ -19,36 +20,23 @@ async function getPlugSignToken(
   cityId?: string
 ): Promise<string | null> {
   try {
-    // Para regional: buscar token do próprio usuário
-    if (userRole === 'regional') {
-      const user = await prisma.appUser.findUnique({
-        where: { id: userId },
-        select: { plugsign_token: true, email: true }
-      });
-
-      if (user?.plugsign_token && user.plugsign_token.length >= 50) {
-        logger.info({ email: user.email }, 'PlugSign: usando token do regional');
-        return user.plugsign_token;
-      }
-    }
-
-    // Para master_br: buscar token da cidade
-    if (userRole === 'master_br' && cityId) {
+    // 1. Se cityId foi passado (master_br selecionando cidade), usar direto
+    if (cityId) {
       const city = await prisma.city.findUnique({
         where: { id: cityId },
         select: { plugsign_token: true, name: true }
       });
 
       if (city?.plugsign_token && city.plugsign_token.length >= 50) {
-        logger.info({ cidade: city.name }, 'PlugSign: usando token da cidade');
+        logger.info({ cidade: city.name }, 'PlugSign: usando token da cidade (cityId passado)');
         return city.plugsign_token;
       }
     }
 
-    // Fallback: tentar buscar do usuário logado (city_id)
+    // 2. Buscar city_id do usuário logado
     const user = await prisma.appUser.findUnique({
       where: { id: userId },
-      select: { city_id: true }
+      select: { city_id: true, email: true }
     });
 
     if (user?.city_id) {
@@ -58,11 +46,12 @@ async function getPlugSignToken(
       });
 
       if (city?.plugsign_token && city.plugsign_token.length >= 50) {
-        logger.info({ cidade: city.name }, 'PlugSign: usando token da cidade do usuário');
+        logger.info({ cidade: city.name, email: user.email }, 'PlugSign: usando token da cidade do usuário');
         return city.plugsign_token;
       }
     }
 
+    logger.warn({ userId, userRole, cityId }, 'PlugSign: nenhum token encontrado na cidade');
     return null;
   } catch (error) {
     logger.error({ error }, 'Erro ao buscar token PlugSign do banco');
@@ -95,6 +84,15 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
     const body = request.body as any;
     const cityId = body?.cityId || (request.query as any)?.cityId;
 
+    logger.info({
+      userId: user.userId,
+      userRole: user.role,
+      cityIdFromBody: body?.cityId,
+      cityIdFromQuery: (request.query as any)?.cityId,
+      cityIdFinal: cityId,
+      bodyKeys: body ? Object.keys(body) : []
+    }, 'PlugSign: buscando token');
+
     let apiToken = await getPlugSignToken(app.prisma, user.userId, user.role, cityId);
 
     // Fallback para token do .env
@@ -108,14 +106,31 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      // Remover campos internos do body antes de enviar para PlugSign
+      // cityId é usado apenas para buscar o token correto, não deve ser enviado para API externa
+      let bodyToSend = request.body;
+      if (bodyToSend && typeof bodyToSend === 'object') {
+        const { cityId, ...cleanBody } = bodyToSend as Record<string, any>;
+        bodyToSend = cleanBody;
+      }
+
+      logger.info({
+        method: request.method,
+        url,
+        bodyKeys: bodyToSend ? Object.keys(bodyToSend) : [],
+        hasFiles: Array.isArray((bodyToSend as any)?.file),
+        fileCount: Array.isArray((bodyToSend as any)?.file) ? (bodyToSend as any).file.length : 0
+      }, 'PlugSign: enviando requisição');
+
       const response = await axios({
         method: request.method as string,
         url,
         headers: {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        data: request.body,
+        data: bodyToSend,
         params: request.query,
         timeout: 30000,
       });
@@ -136,12 +151,19 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (error) {
       const axiosError = error as AxiosError;
-      logger.error({ error: axiosError.message, path }, 'PlugSign API error');
+      logger.error({
+        error: axiosError.message,
+        path,
+        status: axiosError.response?.status,
+        responseData: axiosError.response?.data,
+        requestUrl: url,
+        requestMethod: request.method
+      }, 'PlugSign API error');
 
       if (axiosError.response) {
         return reply.status(axiosError.response.status).send({
           success: false,
-          error: (axiosError.response.data as any)?.message || 'Erro na API PlugSign',
+          error: (axiosError.response.data as any)?.message || (axiosError.response.data as any)?.error || `Erro ${axiosError.response.status} na API PlugSign`,
           data: axiosError.response.data
         });
       }
