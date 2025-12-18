@@ -859,10 +859,66 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
 
       console.log('[motorcycles/all] Found:', motorcycles.length, 'motorcycles');
 
+      // Sanitizar datas inválidas para evitar erro de serialização
+      const sanitizedMotorcycles = motorcycles.map(moto => {
+        const sanitized = { ...moto } as any;
+
+        // Verificar e limpar datas inválidas
+        const dateFields = ['data_ultima_mov', 'data_criacao', 'created_at', 'updated_at'];
+        dateFields.forEach(field => {
+          if (sanitized[field]) {
+            try {
+              const date = new Date(sanitized[field]);
+              if (isNaN(date.getTime())) {
+                console.warn(`[motorcycles/all] Data inválida em ${field} para moto ${moto.placa}:`, sanitized[field]);
+                sanitized[field] = null;
+              }
+            } catch {
+              sanitized[field] = null;
+            }
+          }
+        });
+
+        // Sanitizar datas em objetos aninhados (city, franchisee)
+        if (sanitized.city) {
+          const cityDateFields = ['created_at', 'updated_at'];
+          cityDateFields.forEach(field => {
+            if (sanitized.city[field]) {
+              try {
+                const date = new Date(sanitized.city[field]);
+                if (isNaN(date.getTime())) {
+                  sanitized.city[field] = null;
+                }
+              } catch {
+                sanitized.city[field] = null;
+              }
+            }
+          });
+        }
+
+        if (sanitized.franchisee) {
+          const franchiseeDateFields = ['created_at', 'updated_at', 'birth_date', 'contract_start', 'contract_end'];
+          franchiseeDateFields.forEach(field => {
+            if (sanitized.franchisee[field]) {
+              try {
+                const date = new Date(sanitized.franchisee[field]);
+                if (isNaN(date.getTime())) {
+                  sanitized.franchisee[field] = null;
+                }
+              } catch {
+                sanitized.franchisee[field] = null;
+              }
+            }
+          });
+        }
+
+        return sanitized;
+      });
+
       return reply.status(200).send({
         success: true,
-        data: motorcycles,
-        total: motorcycles.length,
+        data: sanitizedMotorcycles,
+        total: sanitizedMotorcycles.length,
       });
     } catch (error) {
       console.error('[motorcycles/all] Error:', error);
