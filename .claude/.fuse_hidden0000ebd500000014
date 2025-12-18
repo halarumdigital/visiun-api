@@ -26,10 +26,7 @@
       "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx prisma db execute:*)",
       "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx prisma generate:*)",
       "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npx tsc:*)",
-      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/node ./node_modules/.bin/tsc:*)",
-      "Bash(npm install:*)",
-      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npm install pdfkit)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npm install:*)"
+      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/node ./node_modules/.bin/tsc:*)"
     ]
   }
 }

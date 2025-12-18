@@ -297,6 +297,14 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         driver: true,
         vistorias: true,
         contracts: true,
+        secondaryVehicles: {
+          include: {
+            motorcycle: {
+              select: { id: true, placa: true, modelo: true, marca: true },
+            },
+          },
+          orderBy: { created_at: 'desc' },
+        },
       },
     });
 
@@ -795,6 +803,18 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
 
     if (rental.status !== 'active') {
       throw new BadRequestError('Apenas locações ativas podem ser finalizadas');
+    }
+
+    // Verificar se há veículo secundário ativo
+    const activeSecondary = await prisma.rentalSecondaryVehicle.findFirst({
+      where: { rental_id: id, status: 'active' },
+      include: { motorcycle: { select: { placa: true } } },
+    });
+
+    if (activeSecondary) {
+      throw new BadRequestError(
+        `Não é possível finalizar a locação. Há um veículo secundário ativo (${activeSecondary.motorcycle?.placa}). Finalize-o primeiro.`
+      );
     }
 
     // Verificar permissão

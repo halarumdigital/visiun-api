@@ -164,6 +164,7 @@ model AppUser {
   suggestions             Suggestion[]
   suggestion_reactions    SuggestionReaction[]
   roadmap_items           RoadmapItem[] @relation("RoadmapCreator")
+  created_secondary_vehicles RentalSecondaryVehicle[] @relation("CreatedSecondaryVehicle")
 
   @@index([email])
   @@index([city_id])
@@ -268,6 +269,7 @@ model Motorcycle {
   financeiros             Financeiro[]
   recorrentes             LancamentoRecorrente[]
   movements               MotorcycleMovement[]
+  secondaryRentals        RentalSecondaryVehicle[]
 
   @@index([placa])
   @@index([city_id])
@@ -469,6 +471,7 @@ model Rental {
   vistorias                 Vistoria[]
   contracts                 GeneratedContract[]
   distratos                 Distrato[]
+  secondaryVehicles         RentalSecondaryVehicle[]
 
   @@index([franchisee_id])
   @@index([city_id])
@@ -511,6 +514,39 @@ model Distrato {
   @@index([city_id])
   @@index([rental_id])
   @@map("distratos_locacoes")
+}
+
+model RentalSecondaryVehicle {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rental_id            String      @db.Uuid
+  motorcycle_id        String      @db.Uuid
+  start_date           DateTime    @db.Date
+  end_date             DateTime?   @db.Date
+  status               String      @default("active") // active, completed, cancelled
+  motivo               String?     // Motivo da troca/adição
+  notes                String?
+
+  // Dados do Termo Aditivo
+  termo_aditivo_url    String?     // URL do PDF do termo
+  signature_request_id String?     // ID do PlugSign
+  document_key         String?     // Chave para download
+  signed_file_url      String?     // URL do documento assinado
+  signed_at            DateTime?   // Data da assinatura
+  termo_status         String      @default("draft") // draft, pending_signature, signed
+
+  created_by           String?     @db.Uuid
+  created_at           DateTime    @default(now())
+  updated_at           DateTime    @updatedAt
+
+  // Relações
+  rental               Rental      @relation(fields: [rental_id], references: [id])
+  motorcycle           Motorcycle  @relation(fields: [motorcycle_id], references: [id])
+  creator              AppUser?    @relation("CreatedSecondaryVehicle", fields: [created_by], references: [id])
+
+  @@index([rental_id])
+  @@index([motorcycle_id])
+  @@index([status])
+  @@map("rental_secondary_vehicles")
 }
 
 model ContractType {
