@@ -51,10 +51,58 @@ export async function buildApp(): Promise<FastifyInstance> {
     trustProxy: true,
     // Aumentar limite do body para uploads
     bodyLimit: 15 * 1024 * 1024, // 15MB
+    // Formatador de erros de schema
+    schemaErrorFormatter: (errors, dataVar) => {
+      const firstError = errors[0];
+      let message = 'Erro de validação';
+
+      if (firstError) {
+        const field = firstError.instancePath?.replace('/', '') || firstError.params?.missingProperty || 'campo';
+        const keyword = firstError.keyword;
+
+        if (keyword === 'minLength' && field === 'password') {
+          message = 'A senha deve ter pelo menos 8 caracteres';
+        } else if (keyword === 'format' && field === 'email') {
+          message = 'Email inválido';
+        } else if (keyword === 'required') {
+          message = `O campo ${field} é obrigatório`;
+        } else if (firstError.message) {
+          message = firstError.message;
+        }
+      }
+
+      return new Error(message);
+    },
   });
 
   // Decorar app com Prisma
   app.decorate('prisma', prisma);
+
+  // Customizar resposta de erros de validação
+  app.setSchemaErrorFormatter((errors, dataVar) => {
+    const firstError = errors[0];
+    let message = 'Erro de validação';
+
+    if (firstError) {
+      const field = firstError.instancePath?.replace('/', '') || (firstError.params as any)?.missingProperty || 'campo';
+      const keyword = firstError.keyword;
+
+      if (keyword === 'minLength' && field === 'password') {
+        message = 'A senha deve ter pelo menos 8 caracteres';
+      } else if (keyword === 'format' && field === 'email') {
+        message = 'Email inválido';
+      } else if (keyword === 'required') {
+        message = `O campo ${field} é obrigatório`;
+      } else if (firstError.message) {
+        message = firstError.message;
+      }
+    }
+
+    const error = new Error(message) as any;
+    error.validation = errors;
+    error.statusCode = 400;
+    return error;
+  });
 
   // Plugins de segurança
   await app.register(cors, {
@@ -174,20 +222,39 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
 
-    // Erro operacional (AppError)
-    if (error instanceof AppError) {
-      return reply.status(error.statusCode).send({
+    // Erro operacional (AppError) - verificar por propriedades
+    if ((error as any).isOperational && (error as any).statusCode) {
+      return reply.status((error as any).statusCode).send({
         success: false,
         error: error.message,
-        code: error.code,
+        code: (error as any).code || 'ERROR',
       });
     }
 
     // Erro de validação do Fastify
     if (error.validation) {
+      // Extrair mensagem de erro mais específica
+      const firstError = error.validation[0];
+      let errorMessage = 'Erro de validação';
+
+      if (firstError) {
+        const field = firstError.instancePath?.replace('/', '') || firstError.params?.missingProperty || 'campo';
+        const keyword = firstError.keyword;
+
+        if (keyword === 'minLength' && field === 'password') {
+          errorMessage = 'A senha deve ter pelo menos 8 caracteres';
+        } else if (keyword === 'format' && field === 'email') {
+          errorMessage = 'Email inválido';
+        } else if (keyword === 'required') {
+          errorMessage = `O campo ${field} é obrigatório`;
+        } else if (firstError.message) {
+          errorMessage = firstError.message;
+        }
+      }
+
       return reply.status(400).send({
         success: false,
-        error: 'Erro de validação',
+        error: errorMessage,
         code: 'VALIDATION_ERROR',
         details: error.validation,
       });

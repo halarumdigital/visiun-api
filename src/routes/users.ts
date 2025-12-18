@@ -39,7 +39,7 @@ const querySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
   search: z.string().optional(),
   role: z.enum(['master_br', 'admin', 'regional', 'franchisee']).optional(),
-  status: z.enum(['active', 'blocked', 'inactive', 'pending']).optional(),
+  status: z.string().optional(), // Aceita um único status ou múltiplos separados por vírgula
   city_id: z.string().uuid().optional(),
   franchisee_id: z.string().uuid().optional(),
   orderBy: z.enum(['name', 'email', 'created_at', 'last_login']).default('created_at'),
@@ -95,7 +95,7 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
           limit: { type: 'number', default: 20, description: 'Itens por página (máx 100)' },
           search: { type: 'string', description: 'Buscar por nome ou email' },
           role: { type: 'string', enum: ['master_br', 'admin', 'regional', 'franchisee'], description: 'Filtrar por role' },
-          status: { type: 'string', enum: ['active', 'blocked', 'inactive', 'pending'], description: 'Filtrar por status' },
+          status: { type: 'string', description: 'Filtrar por status (pode ser múltiplos separados por vírgula: pending,inactive)' },
           city_id: { type: 'string', format: 'uuid', description: 'Filtrar por cidade' },
           franchisee_id: { type: 'string', format: 'uuid', description: 'Filtrar por franqueado' },
           orderBy: { type: 'string', enum: ['name', 'email', 'created_at', 'last_login'], default: 'created_at' },
@@ -137,7 +137,17 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       ];
     }
     if (role) where.role = role;
-    if (status) where.status = status;
+
+    // Status pode ser um único valor ou múltiplos separados por vírgula
+    if (status) {
+      const statusList = status.split(',').map(s => s.trim()).filter(s => s);
+      if (statusList.length === 1) {
+        where.status = statusList[0];
+      } else if (statusList.length > 1) {
+        where.status = { in: statusList };
+      }
+    }
+
     if (city_id) where.city_id = city_id;
     if (franchisee_id) where.franchisee_id = franchisee_id;
 

@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import {
@@ -508,6 +509,45 @@ export class AuthService {
     return password.substring(0, 4).toUpperCase() +
            password.substring(4, 8).toLowerCase() +
            Math.floor(1000 + Math.random() * 9000);
+  }
+
+  /**
+   * Registro de novo usuário (público - status pendente)
+   */
+  async register(email: string, password: string, name?: string): Promise<{ id: string; email: string }> {
+    // Verificar se email já existe
+    const existingUser = await prisma.appUser.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      throw new ConflictError('Este email já está cadastrado');
+    }
+
+    // Validar força da senha
+    this.validatePasswordStrength(password);
+
+    // Hash da senha
+    const passwordHash = await this.hashPassword(password);
+
+    // Criar usuário com status pendente (aguardando aprovação)
+    const user = await prisma.appUser.create({
+      data: {
+        id: crypto.randomUUID(), // Gerar UUID manualmente
+        email: email.toLowerCase(),
+        name: name || null,
+        password_hash: passwordHash,
+        role: 'regional', // Role padrão - será definido pelo admin na aprovação
+        status: 'pending', // Aguardando aprovação do admin
+      },
+    });
+
+    logger.info({ userId: user.id, email }, 'New user registered (pending approval)');
+
+    return {
+      id: user.id,
+      email: user.email,
+    };
   }
 }
 

@@ -30,7 +30,62 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'Nova senha deve ter pelo menos 8 caracteres'),
 });
 
+const registerSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').optional(),
+});
+
 const authRoutes: FastifyPluginAsync = async (app) => {
+  /**
+   * POST /api/auth/register
+   * Registro de novo usuário (público - aguarda aprovação)
+   */
+  app.post('/register', {
+    schema: {
+      description: 'Registrar novo usuário (aguardando aprovação do admin)',
+      tags: ['Autenticação'],
+    },
+  }, async (request, reply) => {
+    const body = registerSchema.safeParse(request.body);
+
+    if (!body.success) {
+      return reply.status(400).send({
+        success: false,
+        error: body.error.errors[0].message,
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const { email, password, name } = body.data;
+
+    try {
+      const result = await authService.register(email, password, name);
+
+      await auditService.logFromRequest(
+        request,
+        AuditActions.USER_CREATE,
+        'user',
+        result.id,
+        undefined,
+        { email, status: 'pending' }
+      );
+
+      return reply.status(201).send({
+        success: true,
+        message: 'Conta criada com sucesso! Aguarde a aprovação do administrador.',
+        data: result,
+      });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      return reply.status(statusCode).send({
+        success: false,
+        error: error.message || 'Erro ao criar conta',
+        code: error.code || 'ERROR',
+      });
+    }
+  });
+
   /**
    * POST /api/auth/login
    * Login do usuário
