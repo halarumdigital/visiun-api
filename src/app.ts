@@ -110,8 +110,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // Plugins de segurança
+  // Parsear múltiplas origens CORS separadas por vírgula
+  const allowedOrigins = env.FRONTEND_URL.split(',').map(url => url.trim());
   await app.register(cors, {
-    origin: env.FRONTEND_URL,
+    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

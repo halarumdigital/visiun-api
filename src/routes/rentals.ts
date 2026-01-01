@@ -729,9 +729,33 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    // Excluir a locação
-    await prisma.rental.delete({
-      where: { id },
+    // Excluir registros relacionados e a locação em uma transação
+    await prisma.$transaction(async (tx) => {
+      // Excluir vistorias relacionadas
+      await tx.vistoria.deleteMany({
+        where: { rental_id: id },
+      });
+
+      // Excluir distratos relacionados
+      await tx.distrato.deleteMany({
+        where: { rental_id: id },
+      });
+
+      // Excluir veículos secundários relacionados
+      await tx.rentalSecondaryVehicle.deleteMany({
+        where: { rental_id: id },
+      });
+
+      // Desassociar contratos gerados (não excluir, apenas remover a referência)
+      await tx.generatedContract.updateMany({
+        where: { rental_id: id },
+        data: { rental_id: null },
+      });
+
+      // Excluir a locação
+      await tx.rental.delete({
+        where: { id },
+      });
     });
 
     await auditService.logFromRequest(

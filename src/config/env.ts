@@ -18,8 +18,8 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-  // CORS
-  FRONTEND_URL: z.string().url().default('http://localhost:5000'),
+  // CORS - pode ser uma URL única ou múltiplas separadas por vírgula
+  FRONTEND_URL: z.string().default('http://localhost:5000'),
 
   // Cloudflare R2
   R2_ACCOUNT_ID: z.string(),

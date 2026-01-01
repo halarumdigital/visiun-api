@@ -803,18 +803,21 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
 
   /**
    * GET /api/motorcycles/all
-   * Listar todas as motocicletas sem paginação (para Dashboard)
+   * Listar todas as motocicletas sem paginação (para Dashboard e Exportação)
    */
   app.get('/all', {
     preHandler: [authMiddleware, rbac()],
     schema: {
-      description: 'Listar todas as motocicletas sem paginação (para Dashboard)',
+      description: 'Listar todas as motocicletas sem paginação (para Dashboard e Exportação)',
       tags: ['Motocicletas'],
       security: [{ bearerAuth: [] }],
       querystring: {
         type: 'object',
         properties: {
           city_id: { type: 'string', format: 'uuid', description: 'ID da cidade para filtrar' },
+          search: { type: 'string', description: 'Busca por placa, modelo ou chassi' },
+          status: { type: 'string', enum: motorcycleStatusEnum, description: 'Status da motocicleta' },
+          modelo: { type: 'string', description: 'Filtro por modelo' },
         },
       },
       response: {
@@ -831,7 +834,12 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
     },
   }, async (request, reply) => {
     try {
-      const { city_id } = request.query as { city_id?: string };
+      const { city_id, search, status, modelo } = request.query as {
+        city_id?: string;
+        search?: string;
+        status?: string;
+        modelo?: string;
+      };
       const context = getContext(request);
       const where: any = {};
 
@@ -843,6 +851,17 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       if (city_id && context.isMasterOrAdmin()) {
         where.city_id = city_id;
       }
+
+      // Filtros adicionais para exportação
+      if (search) {
+        where.OR = [
+          { placa: { contains: search, mode: 'insensitive' } },
+          { modelo: { contains: search, mode: 'insensitive' } },
+          { chassi: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      if (status) where.status = status;
+      if (modelo) where.modelo = { contains: modelo, mode: 'insensitive' };
 
       console.log('[motorcycles/all] Query where:', JSON.stringify(where));
 
