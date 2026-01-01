@@ -264,34 +264,92 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
       throw new BadRequestError('Locacao nao possui cidade definida');
     }
 
-    // Buscar motos disponiveis da mesma cidade
+    console.log('[available-motorcycles] Buscando motos para cidade:', rental.city_id);
+
+    // Buscar PLACAS de motos que estão em locações ativas (como moto principal)
+    const motosEmLocacaoAtiva = await prisma.rental.findMany({
+      where: {
+        status: 'active',
+        city_id: rental.city_id
+      },
+      select: { motorcycle_plate: true }
+    });
+    const placasEmLocacao = motosEmLocacaoAtiva.map(l => l.motorcycle_plate).filter(Boolean);
+    console.log('[available-motorcycles] Placas em locação ativa:', placasEmLocacao.length);
+
+    // Buscar PLACAS de motos que são veículos secundários ativos
+    const motosComoSecundario = await prisma.rentalSecondaryVehicle.findMany({
+      where: {
+        status: 'active',
+        rental: { city_id: rental.city_id }
+      },
+      include: { motorcycle: { select: { placa: true } } }
+    });
+    const placasSecundarias = motosComoSecundario.map(s => s.motorcycle?.placa).filter(Boolean) as string[];
+    console.log('[available-motorcycles] Placas como veículo secundário ativo:', placasSecundarias.length);
+
+    // Obter placa da moto principal da locação atual
+    const motoPrincipal = await prisma.motorcycle.findUnique({
+      where: { id: rental.motorcycle_id },
+      select: { placa: true }
+    });
+
+    // Combinar todas as PLACAS a serem excluídas (evita problema de duplicatas por ID)
+    const placasExcluir = [
+      motoPrincipal?.placa,
+      ...placasEmLocacao,
+      ...placasSecundarias
+    ].filter(Boolean) as string[];
+
+    // Remover duplicatas
+    const placasExcluirUnicas = [...new Set(placasExcluir)];
+    console.log('[available-motorcycles] Total de placas únicas a excluir:', placasExcluirUnicas.length);
+
+    // Buscar motos disponiveis da mesma cidade, excluindo as que estão em uso POR PLACA
+    // Ordenar por updated_at DESC para pegar o registro mais recente primeiro
     const motorcycles = await prisma.motorcycle.findMany({
       where: {
         city_id: rental.city_id, // Mesma cidade da locacao
-        status: 'active', // Apenas motos disponiveis
-        id: { not: rental.motorcycle_id }, // Excluir a moto principal da locacao
-        // Verificar campos obrigatorios preenchidos
-        placa: { not: null },
-        modelo: { not: null },
-        marca: { not: null },
-        chassi: { not: null },
-        renavam: { not: null },
+        status: 'active', // Apenas motos com status disponivel
+        placa: { notIn: placasExcluirUnicas }, // Excluir motos por PLACA
       },
       include: {
         city: { select: { id: true, name: true } },
         franchisee: { select: { id: true, fantasy_name: true } },
       },
       orderBy: [
-        { marca: 'asc' },
-        { modelo: 'asc' },
-        { placa: 'asc' },
+        { updated_at: 'desc' }, // Mais recente primeiro para deduplicação
       ],
     });
 
-    // Filtrar motos com cadastro completo (double-check)
-    const motosComCadastroCompleto = motorcycles.filter(moto =>
+    console.log('[available-motorcycles] Total encontradas (antes de deduplicar):', motorcycles.length);
+
+    // Deduplicar por placa - manter apenas o registro mais recente de cada placa
+    const placasVistas = new Set<string>();
+    const motosUnicas = motorcycles.filter(moto => {
+      if (!moto.placa || placasVistas.has(moto.placa)) {
+        return false;
+      }
+      placasVistas.add(moto.placa);
+      return true;
+    });
+
+    console.log('[available-motorcycles] Total após deduplicar por placa:', motosUnicas.length);
+    console.log('[available-motorcycles] Primeiras 10 placas:', motosUnicas.slice(0, 10).map(m => m.placa));
+
+    // Filtrar motos com cadastro completo
+    const motosComCadastroCompleto = motosUnicas.filter(moto =>
       moto.placa && moto.modelo && moto.marca && moto.chassi && moto.renavam
     );
+
+    // Ordenar alfabeticamente para exibição
+    motosComCadastroCompleto.sort((a, b) => {
+      const marcaCompare = (a.marca || '').localeCompare(b.marca || '');
+      if (marcaCompare !== 0) return marcaCompare;
+      const modeloCompare = (a.modelo || '').localeCompare(b.modelo || '');
+      if (modeloCompare !== 0) return modeloCompare;
+      return (a.placa || '').localeCompare(b.placa || '');
+    });
 
     return reply.status(200).send({
       success: true,

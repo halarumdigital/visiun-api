@@ -64,6 +64,14 @@ const rentalResponseSchema = {
     creator: { type: 'object', nullable: true, additionalProperties: true },
     plan: { type: 'object', nullable: true, additionalProperties: true },
     driver: { type: 'object', nullable: true, additionalProperties: true },
+    secondaryVehicles: {
+      type: 'array',
+      nullable: true,
+      items: {
+        type: 'object',
+        additionalProperties: true
+      }
+    },
   },
 };
 
@@ -230,6 +238,14 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           },
           plan: true,
           driver: true,
+          secondaryVehicles: {
+            include: {
+              motorcycle: {
+                select: { id: true, placa: true, modelo: true, marca: true },
+              },
+            },
+            orderBy: { created_at: 'desc' },
+          },
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -1105,6 +1121,14 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         attendant: true,
         creator: true, // Fallback quando attendant_id é NULL
         plan: true,
+        secondaryVehicles: {
+          include: {
+            motorcycle: {
+              select: { id: true, placa: true, modelo: true, marca: true },
+            },
+          },
+          orderBy: { created_at: 'desc' },
+        },
       },
       orderBy: { start_date: 'desc' },
     });
@@ -1112,6 +1136,17 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
     // DEBUG: Verificar dados da primeira moto
     if (rentals.length > 0 && rentals[0].motorcycle) {
       console.log('🏍️ DEBUG Moto do primeiro rental:', JSON.stringify(rentals[0].motorcycle, null, 2));
+    }
+
+    // DEBUG: Verificar locações com veículos secundários
+    const rentalsComAditivo = rentals.filter(r => r.secondaryVehicles && r.secondaryVehicles.length > 0);
+    if (rentalsComAditivo.length > 0) {
+      console.log('📋 DEBUG Locações com aditivo:', rentalsComAditivo.length);
+      rentalsComAditivo.forEach(r => {
+        console.log(`  - Placa ${r.motorcycle_plate}: ${r.secondaryVehicles.length} aditivo(s)`,
+          r.secondaryVehicles.map((sv: any) => ({ placa: sv.motorcycle?.placa, status: sv.status }))
+        );
+      });
     }
 
     // Sanitizar datas inválidas para evitar erro de serialização
