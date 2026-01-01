@@ -389,7 +389,7 @@ const contractsRoutes: FastifyPluginAsync = async (app) => {
    * Excluir um contrato gerado
    */
   app.delete('/:id', {
-    preHandler: [authMiddleware, rbac({ allowedRoles: ['admin', 'master_br'] })],
+    preHandler: [authMiddleware, rbac(['master_br', 'admin', 'regional'])],
     schema: {
       description: 'Excluir um contrato gerado',
       tags: ['Contratos'],

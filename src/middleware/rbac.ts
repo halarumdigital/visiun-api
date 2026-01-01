@@ -22,8 +22,14 @@ interface RBACOptions {
 /**
  * Middleware RBAC (Role-Based Access Control)
  * Verifica permissões baseadas em role e injeta contexto de autorização
+ * Aceita tanto array de roles quanto objeto RBACOptions
  */
-export function rbac(options: RBACOptions = {}) {
+export function rbac(optionsOrRoles: RBACOptions | UserRole[] = {}) {
+  // Normalizar input: aceita tanto array de roles quanto objeto de opções
+  const options: RBACOptions = Array.isArray(optionsOrRoles)
+    ? { allowedRoles: optionsOrRoles }
+    : optionsOrRoles;
+
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const user = request.user;
 
