@@ -507,9 +507,6 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Movimento da moto registrado automaticamente via frontend ou trigger
-      // Tabela motorcycle_movements pode não existir em todas as instalações
-
       return newRental;
     });
 
