@@ -418,17 +418,9 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       data.city_id = context.cityId;
     }
 
-    // Verificar se placa já existe
-    const existingMoto = await prisma.motorcycle.findUnique({
-      where: { placa: data.placa.toUpperCase() },
-    });
-
-    if (existingMoto) {
-      throw new BadRequestError('Placa já cadastrada');
-    }
-
     let motorcycle;
     try {
+      // Criar novo registro (permite placas duplicadas)
       motorcycle = await prisma.motorcycle.create({
         data: {
           placa: data.placa.toUpperCase(),
@@ -462,9 +454,6 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       // Erros comuns do Prisma
       if (prismaError.code === 'P2003') {
         throw new BadRequestError(`Erro de referência: ${prismaError.meta?.field_name || 'cidade ou franqueado não existe'}`);
-      }
-      if (prismaError.code === 'P2002') {
-        throw new BadRequestError(`Dado duplicado: ${prismaError.meta?.target || 'placa já existe'}`);
       }
       throw new BadRequestError(`Erro ao criar moto: ${prismaError.message}`);
     }

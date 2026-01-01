@@ -236,7 +236,7 @@ model Franchisee {
 
 model Motorcycle {
   id                      String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  placa                   String           @unique
+  placa                   String
   chassi                  String?
   renavam                 String?
   modelo                  String
