@@ -192,6 +192,7 @@ model City {
   survey_responses  SurveyResponse[]
   campaign_responses CampaignResponse[]
   distratos         Distrato[]
+  vendas            Venda[]
 
   @@map("cities")
 }
@@ -1161,4 +1162,32 @@ model DepositReceipt {
 
   @@index([rental_id])
   @@map("deposit_receipts")
+}
+
+// Tabela de Vendas de Motos
+model Venda {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  data_compra     DateTime @db.Timestamptz
+  parceiro        String
+  status          String   @default("PENDENTE") // PAGO, PAGANDO, PENDENTE
+  entregue        Boolean  @default(false)
+  franqueado      String
+  cnpj            String
+  razao_social    String
+  quantidade      Int      @default(0)
+  marca           String
+  modelo          String
+  valor_unitario  Decimal  @db.Decimal(10, 2) @default(0)
+  valor_total     Decimal  @db.Decimal(10, 2) @default(0)
+  city_id         String?  @db.Uuid
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relações
+  city            City?    @relation(fields: [city_id], references: [id])
+
+  @@index([city_id])
+  @@index([franqueado])
+  @@index([data_compra])
+  @@map("vendas")
 }

@@ -34,6 +34,7 @@ import rentalSecondaryVehiclesRoutes from './routes/rental-secondary-vehicles.js
 import rolePermissionsRoutes from './routes/role-permissions.js';
 import screensRoutes from './routes/screens.js';
 import driversRoutes from './routes/drivers.js';
+import vendasRoutes from './routes/vendas.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -208,6 +209,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(rentalSecondaryVehiclesRoutes, { prefix: '/api/rentals' });
   await app.register(rolePermissionsRoutes, { prefix: '/api/role-permissions' });
   await app.register(screensRoutes, { prefix: '/api/screens' });
+  await app.register(vendasRoutes, { prefix: '/api/vendas' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {
