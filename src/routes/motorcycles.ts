@@ -807,6 +807,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
           search: { type: 'string', description: 'Busca por placa, modelo ou chassi' },
           status: { type: 'string', enum: motorcycleStatusEnum, description: 'Status da motocicleta' },
           modelo: { type: 'string', description: 'Filtro por modelo' },
+          onlyCadastro: { type: 'string', enum: ['true', 'false'], description: 'Se true, retorna apenas registros com data_criacao (cadastro original, não movimento)' },
         },
       },
       response: {
@@ -823,11 +824,12 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
     },
   }, async (request, reply) => {
     try {
-      const { city_id, search, status, modelo } = request.query as {
+      const { city_id, search, status, modelo, onlyCadastro } = request.query as {
         city_id?: string;
         search?: string;
         status?: string;
         modelo?: string;
+        onlyCadastro?: string;
       };
       const context = getContext(request);
       const where: any = {};
@@ -839,6 +841,12 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       // Se master_br com city_id selecionada, aplicar filtro adicional
       if (city_id && context.isMasterOrAdmin()) {
         where.city_id = city_id;
+      }
+
+      // Filtrar apenas registros de cadastro (com data_criacao) - exclui registros de movimento
+      if (onlyCadastro === 'true') {
+        where.data_criacao = { not: null };
+        console.log('[motorcycles/all] Filtrando apenas cadastros (com data_criacao)');
       }
 
       // Filtros adicionais para exportação

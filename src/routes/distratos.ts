@@ -420,30 +420,95 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
       data.city_id = context.cityId;
     }
 
-    const distrato = await prisma.distrato.create({
-      data: {
-        placa: data.placa,
-        franqueado: data.franqueado,
-        inicio_ctt: new Date(data.inicio_ctt),
-        fim_ctt: new Date(data.fim_ctt),
-        motivo: data.motivo,
-        causa: data.causa,
-        termo_url: data.termo_url,
-        franchisee: data.franchisee_id ? { connect: { id: data.franchisee_id } } : undefined,
-        city: data.city_id ? { connect: { id: data.city_id } } : undefined,
-        rental: data.rental_id ? { connect: { id: data.rental_id } } : undefined,
-      },
-      include: {
-        franchisee: {
-          select: { id: true, fantasy_name: true },
+    // Criar distrato e atualizar moto para recolhida em uma transação
+    const distrato = await prisma.$transaction(async (tx) => {
+      // 1. Criar o distrato
+      const novoDistrato = await tx.distrato.create({
+        data: {
+          placa: data.placa,
+          franqueado: data.franqueado,
+          inicio_ctt: new Date(data.inicio_ctt),
+          fim_ctt: new Date(data.fim_ctt),
+          motivo: data.motivo,
+          causa: data.causa,
+          termo_url: data.termo_url,
+          franchisee: data.franchisee_id ? { connect: { id: data.franchisee_id } } : undefined,
+          city: data.city_id ? { connect: { id: data.city_id } } : undefined,
+          rental: data.rental_id ? { connect: { id: data.rental_id } } : undefined,
         },
-        city: {
-          select: { id: true, name: true },
+        include: {
+          franchisee: {
+            select: { id: true, fantasy_name: true },
+          },
+          city: {
+            select: { id: true, name: true },
+          },
+          rental: {
+            select: { id: true, client_name: true, motorcycle_plate: true },
+          },
         },
-        rental: {
-          select: { id: true, client_name: true, motorcycle_plate: true },
+      });
+
+      // 2. Buscar a moto pela placa e CRIAR um novo registro com status recolhida
+      // Busca case-insensitive para garantir que encontre a moto
+      const placaBusca = data.placa.trim();
+      logger.info(`[Distrato] Buscando moto com placa: "${placaBusca}"`);
+
+      const moto = await tx.motorcycle.findFirst({
+        where: {
+          placa: {
+            equals: placaBusca,
+            mode: 'insensitive'
+          }
         },
-      },
+        orderBy: {
+          created_at: 'desc'
+        }
+      });
+
+      logger.info(`[Distrato] Resultado da busca: ${moto ? `Encontrada ID ${moto.id}` : 'NÃO ENCONTRADA'}`);
+
+      if (moto) {
+        // CRIAR um novo registro de movimento para aparecer na aba "Gestão de Motos"
+        // Estratégia: data_criacao é uma data antiga (para não ser o mais recente da placa)
+        // data_ultima_mov é a data atual (para ordenação correta)
+        // O registro existente NÃO é alterado
+        
+        // Usar data_criacao anterior ao data_ultima_mov da moto existente
+        // Isso garante que o registro NÃO será o mais recente da placa
+        const dataCriacaoAntiga = moto.data_ultima_mov
+          ? new Date(new Date(moto.data_ultima_mov).getTime() - 86400000) // 1 dia antes
+          : new Date(new Date().getTime() - 86400000); // 1 dia antes de hoje
+        
+        await tx.motorcycle.create({
+          data: {
+            placa: moto.placa,
+            chassi: moto.chassi,
+            renavam: moto.renavam,
+            modelo: moto.modelo,
+            marca: moto.marca,
+            ano: moto.ano,
+            cor: moto.cor,
+            quilometragem: moto.quilometragem,
+            status: 'recolhida',
+            codigo_cs: moto.codigo_cs,
+            tipo: moto.tipo,
+            valor_semanal: moto.valor_semanal,
+            data_ultima_mov: new Date(), // Data atual para ordenação
+            data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
+            city_id: moto.city_id,
+            franchisee_id: moto.franchisee_id,
+            franqueado: moto.franqueado,
+            observacoes: `Distrato - Causa: ${data.causa}. Motivo: ${data.motivo}`,
+          },
+        });
+
+        logger.info(`[Distrato] Novo registro de movimento criado para moto ${moto.placa} com status 'recolhida' (apenas na aba Gestão de Motos).`);
+      } else {
+        logger.warn(`[Distrato] Moto com placa "${placaBusca}" não encontrada para criar movimento`);
+      }
+
+      return novoDistrato;
     });
 
     return reply.status(201).send({
@@ -655,6 +720,49 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
+      // 3. Buscar dados completos da moto para criar o registro de movimento
+      const motoExistente = await tx.motorcycle.findUnique({
+        where: { id: motorcycle_id },
+      });
+
+      if (motoExistente) {
+        // CRIAR um novo registro de movimento para aparecer na aba "Gestão de Motos"
+        // Estratégia: data_criacao é uma data antiga (para não ser o mais recente da placa)
+        // data_ultima_mov é a data atual (para ordenação correta)
+        // O registro existente NÃO é alterado
+        
+        // Usar data_criacao anterior ao data_ultima_mov da moto existente
+        // Isso garante que o registro NÃO será o mais recente da placa
+        const dataCriacaoAntiga = motoExistente.data_ultima_mov
+          ? new Date(new Date(motoExistente.data_ultima_mov).getTime() - 86400000) // 1 dia antes
+          : new Date(new Date().getTime() - 86400000); // 1 dia antes de hoje
+        
+        await tx.motorcycle.create({
+          data: {
+            placa: motoExistente.placa,
+            chassi: motoExistente.chassi,
+            renavam: motoExistente.renavam,
+            modelo: motoExistente.modelo,
+            marca: motoExistente.marca,
+            ano: motoExistente.ano,
+            cor: motoExistente.cor,
+            quilometragem: motoExistente.quilometragem,
+            status: 'recolhida',
+            codigo_cs: motoExistente.codigo_cs,
+            tipo: motoExistente.tipo,
+            valor_semanal: motoExistente.valor_semanal,
+            data_ultima_mov: new Date(), // Data atual para ordenação
+            data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
+            city_id: motoExistente.city_id,
+            franchisee_id: motoExistente.franchisee_id,
+            franqueado: motoExistente.franqueado,
+            observacoes: `Distrato - Causa: ${causa}. Motivo: ${motivo}`,
+          },
+        });
+
+        logger.info(`[Distrato] Novo registro de movimento criado para moto ${motoExistente.placa} com status 'recolhida' via generate-term (apenas na aba Gestão de Motos).`);
+      }
+
       return { distrato, vistoria };
     });
 
@@ -769,39 +877,87 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
       throw new BadRequestError('motorcycle_id e obrigatorio ou a placa do distrato deve corresponder a uma moto existente');
     }
 
-    // Criar a vistoria de saida
-    const vistoria = await prisma.vistoria.create({
-      data: {
-        rental_id: rental_id || null,
-        distrato_id: distrato.id,
-        motorcycle_id: finalMotorcycleId,
-        city_id: distrato.city_id,
-        franchisee_id: distrato.franchisee_id,
-        inspection_type: 'saida',
-        inspection_date: new Date(),
-        status: 'pendente',
-        placa: distrato.placa,
-        locadora: distrato.franqueado,
-        locatario: locatario || null,
-        observations: observations || `Vistoria de saida - Encerramento. Motivo: ${distrato.motivo}. Causa: ${distrato.causa}`,
-        data_hora: new Date(),
-        created_by: context.userId,
-      },
-      include: {
-        motorcycle: {
-          select: { placa: true, marca: true, modelo: true },
+    // Criar vistoria de saida e atualizar moto em transação
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Criar a vistoria de saida
+      const vistoria = await tx.vistoria.create({
+        data: {
+          rental_id: rental_id || null,
+          distrato_id: distrato.id,
+          motorcycle_id: finalMotorcycleId,
+          city_id: distrato.city_id,
+          franchisee_id: distrato.franchisee_id,
+          inspection_type: 'saida',
+          inspection_date: new Date(),
+          status: 'pendente',
+          placa: distrato.placa,
+          locadora: distrato.franqueado,
+          locatario: locatario || null,
+          observations: observations || `Vistoria de saida - Encerramento. Motivo: ${distrato.motivo}. Causa: ${distrato.causa}`,
+          data_hora: new Date(),
+          created_by: context.userId,
         },
-        franchisee: {
-          select: { fantasy_name: true },
+        include: {
+          motorcycle: {
+            select: { placa: true, marca: true, modelo: true },
+          },
+          franchisee: {
+            select: { fantasy_name: true },
+          },
         },
-      },
+      });
+
+      // 2. Buscar dados completos da moto para criar o registro de movimento
+      const motoExistente = await tx.motorcycle.findUnique({
+        where: { id: finalMotorcycleId },
+      });
+
+      if (motoExistente) {
+        // CRIAR um novo registro de movimento para aparecer na aba "Gestão de Motos"
+        // Estratégia: data_criacao é uma data antiga (para não ser o mais recente da placa)
+        // data_ultima_mov é a data atual (para ordenação correta)
+        // O registro existente NÃO é alterado
+        
+        // Usar data_criacao anterior ao data_ultima_mov da moto existente
+        // Isso garante que o registro NÃO será o mais recente da placa
+        const dataCriacaoAntiga = motoExistente.data_ultima_mov
+          ? new Date(new Date(motoExistente.data_ultima_mov).getTime() - 86400000) // 1 dia antes
+          : new Date(new Date().getTime() - 86400000); // 1 dia antes de hoje
+        
+        await tx.motorcycle.create({
+          data: {
+            placa: motoExistente.placa,
+            chassi: motoExistente.chassi,
+            renavam: motoExistente.renavam,
+            modelo: motoExistente.modelo,
+            marca: motoExistente.marca,
+            ano: motoExistente.ano,
+            cor: motoExistente.cor,
+            quilometragem: motoExistente.quilometragem,
+            status: 'recolhida',
+            codigo_cs: motoExistente.codigo_cs,
+            tipo: motoExistente.tipo,
+            valor_semanal: motoExistente.valor_semanal,
+            data_ultima_mov: new Date(), // Data atual para ordenação
+            data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
+            city_id: motoExistente.city_id,
+            franchisee_id: motoExistente.franchisee_id,
+            franqueado: motoExistente.franqueado,
+            observacoes: `Distrato - Causa: ${distrato.causa}. Motivo: ${distrato.motivo}`,
+          },
+        });
+
+        logger.info(`[Distrato] Novo registro de movimento criado para moto ${motoExistente.placa} com status 'recolhida' via /:id/generate-term (apenas na aba Gestão de Motos).`);
+      }
+
+      return vistoria;
     });
 
     return reply.status(200).send({
       success: true,
       data: {
         distrato,
-        vistoria,
+        vistoria: result,
       },
       message: 'Vistoria de saida criada com sucesso.',
     });
