@@ -203,6 +203,7 @@ model Franchisee {
   company_name         String?
   fantasy_name         String?
   cpf                  String?
+  nome_responsavel     String?
   endereco             String?
   email                String?
   whatsapp_01          String?
