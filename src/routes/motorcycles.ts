@@ -834,13 +834,18 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       const context = getContext(request);
       const where: any = {};
 
+      console.log('[motorcycles/all] city_id recebido:', city_id, '| tipo:', typeof city_id);
+
       // Aplicar filtro baseado no role
       const roleFilter = context.getFranchiseeFilter();
       Object.assign(where, roleFilter);
 
-      // Se master_br com city_id selecionada, aplicar filtro adicional
-      if (city_id && context.isMasterOrAdmin()) {
+      // Aplicar filtro de cidade se fornecido
+      if (city_id) {
         where.city_id = city_id;
+        console.log('[motorcycles/all] Filtro de cidade aplicado:', city_id);
+      } else {
+        console.log('[motorcycles/all] NENHUM filtro de cidade!');
       }
 
       // Filtrar apenas registros de cadastro (com data_criacao) - exclui registros de movimento
