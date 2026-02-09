@@ -184,6 +184,39 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    // Sanitizar CNPJ: apenas dígitos, deve ter 14 caracteres ou ser null
+    let cnpj: string | null = null;
+    if (data.cnpj) {
+      const cnpjClean = data.cnpj.replace(/\D/g, '');
+      if (cnpjClean.length === 14) {
+        cnpj = cnpjClean;
+      } else if (cnpjClean.length > 0) {
+        throw new BadRequestError('CNPJ deve ter 14 dígitos');
+      }
+    }
+
+    // Verificar se já existe cliente com o mesmo CNPJ (se CNPJ foi informado)
+    if (cnpj) {
+      const existingClient = await prisma.client.findFirst({
+        where: { cnpj },
+      });
+
+      if (existingClient) {
+        throw new BadRequestError('Já existe um cliente com este CNPJ');
+      }
+    }
+
+    // Sanitizar CPF responsável: apenas dígitos, deve ter 11 caracteres ou ser null
+    let cpfResponsavel: string | null = null;
+    if (data.cpf_responsavel) {
+      const cpfClean = data.cpf_responsavel.replace(/\D/g, '');
+      if (cpfClean.length === 11) {
+        cpfResponsavel = cpfClean;
+      } else if (cpfClean.length > 0) {
+        throw new BadRequestError('CPF do responsável deve ter 11 dígitos');
+      }
+    }
+
     const client = await prisma.client.create({
       data: {
         full_name: data.full_name,
@@ -207,9 +240,9 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
         cnh_document_url: data.cnh_document_url || null,
         residence_proof_url: data.residence_proof_url || null,
         is_pj: data.is_pj || false,
-        cnpj: data.cnpj || null,
+        cnpj,
         razao_social: data.razao_social || null,
-        cpf_responsavel: data.cpf_responsavel || null,
+        cpf_responsavel: cpfResponsavel,
         status: data.status || 'ativo',
         franchisee_id: data.franchisee_id || null,
       },
@@ -318,9 +351,35 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
     if (data.cnh_document_url !== undefined) updateData.cnh_document_url = data.cnh_document_url;
     if (data.residence_proof_url !== undefined) updateData.residence_proof_url = data.residence_proof_url;
     if (data.is_pj !== undefined) updateData.is_pj = data.is_pj;
-    if (data.cnpj !== undefined) updateData.cnpj = data.cnpj;
+    if (data.cnpj !== undefined) {
+      if (data.cnpj) {
+        const cnpjClean = data.cnpj.replace(/\D/g, '');
+        if (cnpjClean.length === 14) {
+          updateData.cnpj = cnpjClean;
+        } else if (cnpjClean.length > 0) {
+          throw new BadRequestError('CNPJ deve ter 14 dígitos');
+        } else {
+          updateData.cnpj = null;
+        }
+      } else {
+        updateData.cnpj = null;
+      }
+    }
     if (data.razao_social !== undefined) updateData.razao_social = data.razao_social;
-    if (data.cpf_responsavel !== undefined) updateData.cpf_responsavel = data.cpf_responsavel;
+    if (data.cpf_responsavel !== undefined) {
+      if (data.cpf_responsavel) {
+        const cpfClean = data.cpf_responsavel.replace(/\D/g, '');
+        if (cpfClean.length === 11) {
+          updateData.cpf_responsavel = cpfClean;
+        } else if (cpfClean.length > 0) {
+          throw new BadRequestError('CPF do responsável deve ter 11 dígitos');
+        } else {
+          updateData.cpf_responsavel = null;
+        }
+      } else {
+        updateData.cpf_responsavel = null;
+      }
+    }
     if (data.status !== undefined) updateData.status = data.status;
     if (data.franchisee_id !== undefined) updateData.franchisee_id = data.franchisee_id;
 

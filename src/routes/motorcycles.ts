@@ -834,8 +834,6 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       const context = getContext(request);
       const where: any = {};
 
-      console.log('[motorcycles/all] city_id recebido:', city_id, '| tipo:', typeof city_id);
-
       // Aplicar filtro baseado no role
       const roleFilter = context.getFranchiseeFilter();
       Object.assign(where, roleFilter);
@@ -843,15 +841,11 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       // Aplicar filtro de cidade se fornecido
       if (city_id) {
         where.city_id = city_id;
-        console.log('[motorcycles/all] Filtro de cidade aplicado:', city_id);
-      } else {
-        console.log('[motorcycles/all] NENHUM filtro de cidade!');
       }
 
       // Filtrar apenas registros de cadastro (com data_criacao) - exclui registros de movimento
       if (onlyCadastro === 'true') {
         where.data_criacao = { not: null };
-        console.log('[motorcycles/all] Filtrando apenas cadastros (com data_criacao)');
       }
 
       // Filtros adicionais para exportação
@@ -865,74 +859,57 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       if (status) where.status = status;
       if (modelo) where.modelo = { contains: modelo, mode: 'insensitive' };
 
-      console.log('[motorcycles/all] Query where:', JSON.stringify(where));
-
       const motorcycles = await prisma.motorcycle.findMany({
         where,
-        include: {
-          city: true,
-          franchisee: true,
+        select: {
+          id: true,
+          placa: true,
+          chassi: true,
+          renavam: true,
+          modelo: true,
+          marca: true,
+          ano: true,
+          cor: true,
+          quilometragem: true,
+          status: true,
+          codigo_cs: true,
+          tipo: true,
+          valor_semanal: true,
+          data_ultima_mov: true,
+          data_criacao: true,
+          city_id: true,
+          franchisee_id: true,
+          doc_moto: true,
+          doc_taxa_intermediacao: true,
+          observacoes: true,
+          created_at: true,
+          updated_at: true,
+          city: {
+            select: { id: true, name: true, slug: true },
+          },
+          franchisee: {
+            select: { id: true, fantasy_name: true, company_name: true, cnpj: true, city_id: true },
+          },
         },
         orderBy: [
           { created_at: 'desc' },
         ],
       });
 
-      console.log('[motorcycles/all] Found:', motorcycles.length, 'motorcycles');
-
       // Sanitizar datas inválidas para evitar erro de serialização
+      const dateFields = ['data_ultima_mov', 'data_criacao', 'created_at', 'updated_at'];
       const sanitizedMotorcycles = motorcycles.map(moto => {
         const sanitized = { ...moto } as any;
-
-        // Verificar e limpar datas inválidas
-        const dateFields = ['data_ultima_mov', 'data_criacao', 'created_at', 'updated_at'];
-        dateFields.forEach(field => {
+        for (const field of dateFields) {
           if (sanitized[field]) {
             try {
               const date = new Date(sanitized[field]);
-              if (isNaN(date.getTime())) {
-                console.warn(`[motorcycles/all] Data inválida em ${field} para moto ${moto.placa}:`, sanitized[field]);
-                sanitized[field] = null;
-              }
+              if (isNaN(date.getTime())) sanitized[field] = null;
             } catch {
               sanitized[field] = null;
             }
           }
-        });
-
-        // Sanitizar datas em objetos aninhados (city, franchisee)
-        if (sanitized.city) {
-          const cityDateFields = ['created_at', 'updated_at'];
-          cityDateFields.forEach(field => {
-            if (sanitized.city[field]) {
-              try {
-                const date = new Date(sanitized.city[field]);
-                if (isNaN(date.getTime())) {
-                  sanitized.city[field] = null;
-                }
-              } catch {
-                sanitized.city[field] = null;
-              }
-            }
-          });
         }
-
-        if (sanitized.franchisee) {
-          const franchiseeDateFields = ['created_at', 'updated_at', 'birth_date', 'contract_start', 'contract_end'];
-          franchiseeDateFields.forEach(field => {
-            if (sanitized.franchisee[field]) {
-              try {
-                const date = new Date(sanitized.franchisee[field]);
-                if (isNaN(date.getTime())) {
-                  sanitized.franchisee[field] = null;
-                }
-              } catch {
-                sanitized.franchisee[field] = null;
-              }
-            }
-          });
-        }
-
         return sanitized;
       });
 

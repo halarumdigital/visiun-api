@@ -233,6 +233,8 @@ model Franchisee {
 
   @@index([city_id])
   @@index([cnpj])
+  // Índice composto para filtro cidade + status
+  @@index([city_id, status])
   @@map("franchisees")
 }
 
@@ -254,7 +256,6 @@ model Motorcycle {
   data_criacao            DateTime?
   city_id                 String?          @db.Uuid
   franchisee_id           String?          @db.Uuid
-  franqueado              String?
   doc_moto                String?
   doc_taxa_intermediacao  String?
   observacoes             String?
@@ -277,6 +278,9 @@ model Motorcycle {
   @@index([city_id])
   @@index([franchisee_id])
   @@index([status])
+  // Índices compostos para queries da página Locações
+  @@index([city_id, status])
+  @@index([city_id, created_at(sort: Desc)])
   @@map("motorcycles")
 }
 
@@ -350,6 +354,7 @@ model Client {
   vistorias           Vistoria[]
 
   @@index([cpf])
+  @@index([cnpj])
   @@index([franchisee_id])
   @@map("clients")
 }
@@ -480,6 +485,11 @@ model Rental {
   @@index([motorcycle_id])
   @@index([status])
   @@index([start_date])
+  // Índices compostos para queries da página Locações
+  @@index([city_id, start_date(sort: Desc)])
+  @@index([franchisee_id, start_date(sort: Desc)])
+  @@index([status, start_date(sort: Desc)])
+  @@index([city_id, status])
   @@map("rentals")
 }
 
@@ -515,6 +525,8 @@ model Distrato {
   @@index([franchisee_id])
   @@index([city_id])
   @@index([rental_id])
+  // Índice composto para busca de distratos por locação
+  @@index([rental_id, created_at(sort: Desc)])
   @@map("distratos_locacoes")
 }
 
@@ -548,6 +560,8 @@ model RentalSecondaryVehicle {
   @@index([rental_id])
   @@index([motorcycle_id])
   @@index([status])
+  // Índice composto para busca de veículos secundários por locação
+  @@index([rental_id, status])
   @@map("rental_secondary_vehicles")
 }
 

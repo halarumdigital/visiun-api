@@ -29,12 +29,7 @@
       "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/node ./node_modules/.bin/tsc:*)",
       "Bash(npm install:*)",
       "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npm install pdfkit)",
-      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npm install:*)",
-      "Bash(PGPASSWORD='@wa&xGc/7y&v?eF' psql:*)",
-      "Bash(node -e:*)",
-      "Bash(export:*)",
-      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
-      "Bash(. \"$NVM_DIR/nvm.sh\")"
+      "Bash(PATH=\"/home/gilliard/.nvm/versions/node/v22.21.1/bin:$PATH\" npm install:*)"
     ]
   }
 }

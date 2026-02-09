@@ -1111,13 +1111,50 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
     const rentals = await prisma.rental.findMany({
       where,
       include: {
-        motorcycle: true,
-        franchisee: true,
-        city: true,
+        motorcycle: {
+          select: {
+            id: true,
+            placa: true,
+            modelo: true,
+            marca: true,
+            ano: true,
+            cor: true,
+            chassi: true,
+            renavam: true,
+            status: true,
+            quilometragem: true,
+            city_id: true,
+            franchisee_id: true,
+            valor_semanal: true,
+          },
+        },
+        franchisee: {
+          select: {
+            id: true,
+            fantasy_name: true,
+            company_name: true,
+            cnpj: true,
+            cpf: true,
+            nome_responsavel: true,
+            email: true,
+            whatsapp_01: true,
+            city_id: true,
+            status: true,
+          },
+        },
+        city: {
+          select: { id: true, name: true, slug: true },
+        },
         driver: true,
-        attendant: true,
-        creator: true, // Fallback quando attendant_id é NULL
-        plan: true,
+        attendant: {
+          select: { id: true, name: true, email: true },
+        },
+        creator: {
+          select: { id: true, name: true, email: true },
+        },
+        plan: {
+          select: { id: true, name: true, daily_rate: true, weekly_rate: true, monthly_rate: true, deposit_amount: true },
+        },
         secondaryVehicles: {
           include: {
             motorcycle: {
@@ -1129,22 +1166,6 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
       },
       orderBy: { start_date: 'desc' },
     });
-
-    // DEBUG: Verificar dados da primeira moto
-    if (rentals.length > 0 && rentals[0].motorcycle) {
-      console.log('🏍️ DEBUG Moto do primeiro rental:', JSON.stringify(rentals[0].motorcycle, null, 2));
-    }
-
-    // DEBUG: Verificar locações com veículos secundários
-    const rentalsComAditivo = rentals.filter(r => r.secondaryVehicles && r.secondaryVehicles.length > 0);
-    if (rentalsComAditivo.length > 0) {
-      console.log('📋 DEBUG Locações com aditivo:', rentalsComAditivo.length);
-      rentalsComAditivo.forEach(r => {
-        console.log(`  - Placa ${r.motorcycle_plate}: ${r.secondaryVehicles.length} aditivo(s)`,
-          r.secondaryVehicles.map((sv: any) => ({ placa: sv.motorcycle?.placa, status: sv.status }))
-        );
-      });
-    }
 
     // Sanitizar datas inválidas para evitar erro de serialização
     const sanitizedRentals = rentals.map(rental => ({
