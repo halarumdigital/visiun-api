@@ -36,7 +36,7 @@ const updateUserSchema = z.object({
 
 const querySchema = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(5000).default(20),
   search: z.string().optional(),
   role: z.enum(['master_br', 'admin', 'regional', 'franchisee']).optional(),
   status: z.string().optional(), // Aceita um único status ou múltiplos separados por vírgula
@@ -44,6 +44,7 @@ const querySchema = z.object({
   franchisee_id: z.string().uuid().optional(),
   orderBy: z.enum(['name', 'email', 'created_at', 'last_login']).default('created_at'),
   orderDir: z.enum(['asc', 'desc']).default('desc'),
+  fields: z.enum(['full', 'minimal']).default('full'),
 });
 
 // Schemas para Swagger
@@ -92,7 +93,7 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         properties: {
           page: { type: 'number', default: 1, description: 'Página atual' },
-          limit: { type: 'number', default: 20, description: 'Itens por página (máx 100)' },
+          limit: { type: 'number', default: 20, description: 'Itens por página (máx 5000)' },
           search: { type: 'string', description: 'Buscar por nome ou email' },
           role: { type: 'string', enum: ['master_br', 'admin', 'regional', 'franchisee'], description: 'Filtrar por role' },
           status: { type: 'string', description: 'Filtrar por status (pode ser múltiplos separados por vírgula: pending,inactive)' },
@@ -100,6 +101,7 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
           franchisee_id: { type: 'string', format: 'uuid', description: 'Filtrar por franqueado' },
           orderBy: { type: 'string', enum: ['name', 'email', 'created_at', 'last_login'], default: 'created_at' },
           orderDir: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          fields: { type: 'string', enum: ['full', 'minimal'], default: 'full', description: 'Modo minimal retorna apenas id, name, city_id e city.name' },
         },
       },
       response: {
@@ -119,7 +121,7 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       throw new BadRequestError(query.error.errors[0].message);
     }
 
-    const { page, limit, search, role, status, city_id, franchisee_id, orderBy, orderDir } = query.data;
+    const { page, limit, search, role, status, city_id, franchisee_id, orderBy, orderDir, fields } = query.data;
     const context = getContext(request);
 
     // Construir filtros
@@ -151,13 +153,26 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
     if (city_id) where.city_id = city_id;
     if (franchisee_id) where.franchisee_id = franchisee_id;
 
+    const isMinimal = fields === 'minimal';
+
     const [users, total] = await Promise.all([
       prisma.appUser.findMany({
         where,
-        include: {
-          city: true,
-          franchisee: true,
-        },
+        ...(isMinimal
+          ? {
+              select: {
+                id: true,
+                name: true,
+                city_id: true,
+                city: { select: { id: true, name: true } },
+              },
+            }
+          : {
+              include: {
+                city: true,
+                franchisee: true,
+              },
+            }),
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { [orderBy]: orderDir },
@@ -165,15 +180,17 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       prisma.appUser.count({ where }),
     ]);
 
-    // Remover campos sensíveis
-    const sanitizedUsers = users.map(user => ({
-      ...user,
-      password_hash: undefined,
-      refresh_token: undefined,
-      refresh_token_expires_at: undefined,
-      password_reset_token: undefined,
-      password_reset_expires: undefined,
-    }));
+    // Remover campos sensíveis (não necessário no modo minimal)
+    const sanitizedUsers = isMinimal
+      ? users
+      : users.map(user => ({
+          ...user,
+          password_hash: undefined,
+          refresh_token: undefined,
+          refresh_token_expires_at: undefined,
+          password_reset_token: undefined,
+          password_reset_expires: undefined,
+        }));
 
     return reply.status(200).send({
       success: true,

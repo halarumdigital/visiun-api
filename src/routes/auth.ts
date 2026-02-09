@@ -36,6 +36,16 @@ const registerSchema = z.object({
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').optional(),
 });
 
+const loginCnpjSchema = z.object({
+  cnpj: z.string().min(1, 'CNPJ é obrigatório'),
+});
+
+const franchiseeSetupSchema = z.object({
+  franchiseeId: z.string().min(1, 'ID do franqueado é obrigatório'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+});
+
 const authRoutes: FastifyPluginAsync = async (app) => {
   /**
    * POST /api/auth/register
@@ -417,6 +427,90 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       success: true,
       message: 'Senha alterada com sucesso',
     });
+  });
+
+  /**
+   * POST /api/auth/login-cnpj
+   * Buscar franqueado pelo CNPJ (público)
+   */
+  app.post('/login-cnpj', {
+    preHandler: [loginRateLimit],
+    schema: {
+      description: 'Buscar franqueado pelo CNPJ para login',
+      tags: ['Autenticação'],
+    },
+  }, async (request, reply) => {
+    const body = loginCnpjSchema.safeParse(request.body);
+
+    if (!body.success) {
+      throw new BadRequestError(body.error.errors[0].message);
+    }
+
+    const { cnpj } = body.data;
+
+    try {
+      const franchisee = await authService.findFranchiseeByCnpj(cnpj);
+
+      return reply.status(200).send({
+        success: true,
+        data: franchisee,
+      });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      return reply.status(statusCode).send({
+        success: false,
+        error: error.message || 'Erro ao buscar franqueado',
+        code: error.code || 'ERROR',
+      });
+    }
+  });
+
+  /**
+   * POST /api/auth/franchisee-setup
+   * Criar conta para franqueado (primeira senha)
+   */
+  app.post('/franchisee-setup', {
+    schema: {
+      description: 'Criar conta de acesso para franqueado (primeira senha)',
+      tags: ['Autenticação'],
+    },
+  }, async (request, reply) => {
+    const body = franchiseeSetupSchema.safeParse(request.body);
+
+    if (!body.success) {
+      return reply.status(400).send({
+        success: false,
+        error: body.error.errors[0].message,
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const { franchiseeId, email, password } = body.data;
+
+    try {
+      const result = await authService.franchiseeSetup(franchiseeId, email, password);
+
+      await auditService.logFromRequest(
+        request,
+        AuditActions.USER_CREATE,
+        'user',
+        result.user.id,
+        undefined,
+        { email, franchiseeId, type: 'franchisee_setup' }
+      );
+
+      return reply.status(201).send({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      return reply.status(statusCode).send({
+        success: false,
+        error: error.message || 'Erro ao criar conta',
+        code: error.code || 'ERROR',
+      });
+    }
   });
 
   /**

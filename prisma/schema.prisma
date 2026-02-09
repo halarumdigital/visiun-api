@@ -273,6 +273,7 @@ model Motorcycle {
   recorrentes             LancamentoRecorrente[]
   movements               MotorcycleMovement[]
   secondaryRentals        RentalSecondaryVehicle[]
+  ordensServico           OrdemServico[]
 
   @@index([placa])
   @@index([city_id])
@@ -444,7 +445,7 @@ model Rental {
   driver_address_zip_code   String?
   motorcycle_id             String       @db.Uuid
   motorcycle_plate          String
-  franchisee_id             String       @db.Uuid
+  franchisee_id             String?      @db.Uuid
   city_id                   String?      @db.Uuid
   attendant_id              String?      @db.Uuid
   plan_id                   String?      @db.Uuid
@@ -467,7 +468,7 @@ model Rental {
 
   // Relações
   motorcycle                Motorcycle   @relation(fields: [motorcycle_id], references: [id])
-  franchisee                Franchisee   @relation(fields: [franchisee_id], references: [id])
+  franchisee                Franchisee?  @relation(fields: [franchisee_id], references: [id])
   city                      City?        @relation(fields: [city_id], references: [id])
   attendant                 AppUser?     @relation("AttendantUser", fields: [attendant_id], references: [id])
   plan                      RentalPlan?  @relation(fields: [plan_id], references: [id])
@@ -1158,6 +1159,82 @@ model ManutencaoPeca {
   manutencao      Manutencao @relation(fields: [manutencao_id], references: [id], onDelete: Cascade)
 
   @@map("manutencao_pecas")
+}
+
+// Tabela de Ordens de Serviço (manutenções reais)
+model OrdemServico {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero_os                 String
+  motorcycle_id             String?  @db.Uuid
+  oficina_id                String?  @db.Uuid
+  profissional_id           String?  @db.Uuid
+  data_abertura             DateTime? @default(now())
+  data_previsao             DateTime?
+  data_conclusao            DateTime?
+  status                    String?  @default("aberta")
+  tipo_manutencao           String?
+  km_atual                  Int?
+  descricao_problema        String?
+  diagnostico               String?
+  solucao                   String?
+  valor_pecas               Decimal? @db.Decimal
+  valor_servicos            Decimal? @db.Decimal
+  valor_total               Decimal? @db.Decimal
+  observacoes               String?
+  created_at                DateTime? @default(now())
+  updated_at                DateTime? @default(now())
+  created_by                String?  @db.Uuid
+  city_id                   String?  @db.Uuid
+  locatario                 String?
+  aceite_franqueado         String?  @default("pendente")
+  aceite_data               DateTime?
+  financeiro_id             String?  @db.Uuid
+  aceite_observacao         String?
+
+  // Relações
+  motorcycle                Motorcycle? @relation(fields: [motorcycle_id], references: [id])
+
+  // Relações inversas
+  servicos                  OrdemServicoServico[]
+  pecas                     OrdemServicoPeca[]
+
+  @@index([motorcycle_id])
+  @@index([city_id])
+  @@index([data_previsao])
+  @@index([status])
+  @@map("ordens_servico")
+}
+
+model OrdemServicoServico {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ordem_servico_id  String?  @db.Uuid
+  servico_id        String?  @db.Uuid
+  quantidade        Decimal? @default(1) @db.Decimal
+  preco_unitario    Decimal  @db.Decimal
+  preco_total       Decimal? @db.Decimal
+  observacoes       String?
+  created_at        DateTime? @default(now())
+
+  // Relações
+  ordemServico      OrdemServico? @relation(fields: [ordem_servico_id], references: [id], onDelete: Cascade)
+
+  @@map("ordens_servico_servicos")
+}
+
+model OrdemServicoPeca {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ordem_servico_id  String?  @db.Uuid
+  peca_id           String?  @db.Uuid
+  quantidade        Decimal  @db.Decimal
+  preco_unitario    Decimal  @db.Decimal
+  preco_total       Decimal? @db.Decimal
+  observacoes       String?
+  created_at        DateTime? @default(now())
+
+  // Relações
+  ordemServico      OrdemServico? @relation(fields: [ordem_servico_id], references: [id], onDelete: Cascade)
+
+  @@map("ordens_servico_pecas")
 }
 
 // Tabela de Recibos de Caução

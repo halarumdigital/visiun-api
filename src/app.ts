@@ -36,6 +36,7 @@ import screensRoutes from './routes/screens.js';
 import driversRoutes from './routes/drivers.js';
 import vendasRoutes from './routes/vendas.js';
 import rastreadoresRoutes from './routes/rastreadores.js';
+import manutencoesRoutes from './routes/manutencoes.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -212,6 +213,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(screensRoutes, { prefix: '/api/screens' });
   await app.register(vendasRoutes, { prefix: '/api/vendas' });
   await app.register(rastreadoresRoutes, { prefix: '/api/rastreadores' });
+  await app.register(manutencoesRoutes, { prefix: '/api/manutencoes' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {

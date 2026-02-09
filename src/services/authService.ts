@@ -531,6 +531,91 @@ export class AuthService {
   /**
    * Registro de novo usuário (público - status pendente)
    */
+  /**
+   * Buscar franqueado por CNPJ (público - para login por CNPJ)
+   */
+  async findFranchiseeByCnpj(cnpj: string): Promise<any> {
+    const cleanCnpj = cnpj.replace(/\D/g, '');
+
+    const franchisee = await prisma.franchisee.findFirst({
+      where: { cnpj: cleanCnpj },
+      select: {
+        id: true,
+        cnpj: true,
+        fantasy_name: true,
+        company_name: true,
+        email: true,
+        city_id: true,
+        user_id: true,
+        status: true,
+      },
+    });
+
+    if (!franchisee) {
+      throw new NotFoundError('CNPJ não encontrado');
+    }
+
+    return franchisee;
+  }
+
+  /**
+   * Setup de primeira senha para franqueado (criar usuário + vincular)
+   */
+  async franchiseeSetup(franchiseeId: string, email: string, password: string): Promise<AuthResult> {
+    // Buscar franqueado
+    const franchisee = await prisma.franchisee.findUnique({
+      where: { id: franchiseeId },
+    });
+
+    if (!franchisee) {
+      throw new NotFoundError('Franqueado não encontrado');
+    }
+
+    if (franchisee.user_id) {
+      throw new ConflictError('Este franqueado já possui uma conta vinculada');
+    }
+
+    // Verificar se email já existe
+    const existingUser = await prisma.appUser.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      throw new ConflictError('Este email já está cadastrado');
+    }
+
+    this.validatePasswordStrength(password);
+    const passwordHash = await this.hashPassword(password);
+
+    // Criar usuário e vincular ao franqueado em transação
+    const user = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.appUser.create({
+        data: {
+          id: crypto.randomUUID(),
+          email: email.toLowerCase(),
+          password_hash: passwordHash,
+          role: 'franchisee',
+          status: 'active',
+          city_id: franchisee.city_id,
+          franchisee_id: franchisee.id,
+        },
+      });
+
+      await tx.franchisee.update({
+        where: { id: franchiseeId },
+        data: {
+          user_id: newUser.id,
+          email: email.toLowerCase(),
+        },
+      });
+
+      return newUser;
+    });
+
+    // Fazer login automático
+    return this.login(email.toLowerCase(), password);
+  }
+
   async register(email: string, password: string, name?: string): Promise<{ id: string; email: string }> {
     // Verificar se email já existe
     const existingUser = await prisma.appUser.findUnique({
