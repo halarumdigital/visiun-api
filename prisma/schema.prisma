@@ -783,16 +783,22 @@ model Vistoria {
   inspection_date DateTime      @db.Date
   inspection_type String
   status          String         @default("pendente")
+  mileage         String?
   placa           String?
   locadora        String?
   locatario       String?
   observations    String?
   data_hora       DateTime?
-  foto_1_path     String?
-  foto_2_path     String?
-  foto_3_path     String?
-  foto_4_path     String?
-  foto_5_path     String?
+  photo_1_path    String?
+  photo_2_path    String?
+  photo_3_path    String?
+  photo_4_path    String?
+  photo_5_path    String?
+  photo_6_path    String?
+  photo_7_path    String?
+  photo_8_path    String?
+  photo_9_path    String?
+  photo_10_path   String?
   created_by      String?       @db.Uuid
   created_at      DateTime      @default(now())
   updated_at      DateTime      @updatedAt

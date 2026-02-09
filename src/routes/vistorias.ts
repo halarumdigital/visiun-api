@@ -25,11 +25,16 @@ const vistoriaResponseSchema = {
     locatario: { type: 'string', nullable: true },
     observations: { type: 'string', nullable: true },
     data_hora: { type: 'string', format: 'date-time', nullable: true },
-    foto_1_path: { type: 'string', nullable: true },
-    foto_2_path: { type: 'string', nullable: true },
-    foto_3_path: { type: 'string', nullable: true },
-    foto_4_path: { type: 'string', nullable: true },
-    foto_5_path: { type: 'string', nullable: true },
+    photo_1_path: { type: 'string', nullable: true },
+    photo_2_path: { type: 'string', nullable: true },
+    photo_3_path: { type: 'string', nullable: true },
+    photo_4_path: { type: 'string', nullable: true },
+    photo_5_path: { type: 'string', nullable: true },
+    photo_6_path: { type: 'string', nullable: true },
+    photo_7_path: { type: 'string', nullable: true },
+    photo_8_path: { type: 'string', nullable: true },
+    photo_9_path: { type: 'string', nullable: true },
+    photo_10_path: { type: 'string', nullable: true },
     created_at: { type: 'string', format: 'date-time' },
     updated_at: { type: 'string', format: 'date-time' },
     motorcycle: {
@@ -97,11 +102,16 @@ const createVistoriaSchema = z.object({
 const updateVistoriaSchema = z.object({
   observations: z.string().optional().nullable(),
   status: z.enum(['pendente', 'aprovada', 'reprovada']).optional(),
-  foto_1_path: z.string().optional().nullable(),
-  foto_2_path: z.string().optional().nullable(),
-  foto_3_path: z.string().optional().nullable(),
-  foto_4_path: z.string().optional().nullable(),
-  foto_5_path: z.string().optional().nullable(),
+  photo_1_path: z.string().optional().nullable(),
+  photo_2_path: z.string().optional().nullable(),
+  photo_3_path: z.string().optional().nullable(),
+  photo_4_path: z.string().optional().nullable(),
+  photo_5_path: z.string().optional().nullable(),
+  photo_6_path: z.string().optional().nullable(),
+  photo_7_path: z.string().optional().nullable(),
+  photo_8_path: z.string().optional().nullable(),
+  photo_9_path: z.string().optional().nullable(),
+  photo_10_path: z.string().optional().nullable(),
 });
 
 const querySchema = z.object({
@@ -207,11 +217,16 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
           locatario: true,
           observations: true,
           data_hora: true,
-          foto_1_path: true,
-          foto_2_path: true,
-          foto_3_path: true,
-          foto_4_path: true,
-          foto_5_path: true,
+          photo_1_path: true,
+          photo_2_path: true,
+          photo_3_path: true,
+          photo_4_path: true,
+          photo_5_path: true,
+          photo_6_path: true,
+          photo_7_path: true,
+          photo_8_path: true,
+          photo_9_path: true,
+          photo_10_path: true,
           created_by: true,
           created_at: true,
           updated_at: true,
@@ -450,7 +465,7 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
         inspection_date: new Date(),
         status: 'pendente',
         created_by: context.userId,
-      },
+      } as any,
       include: {
         motorcycle: {
           select: { placa: true, marca: true, modelo: true },
@@ -492,11 +507,16 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
         properties: {
           observations: { type: 'string' },
           status: { type: 'string', enum: ['pendente', 'aprovada', 'reprovada'] },
-          foto_1_path: { type: 'string' },
-          foto_2_path: { type: 'string' },
-          foto_3_path: { type: 'string' },
-          foto_4_path: { type: 'string' },
-          foto_5_path: { type: 'string' },
+          photo_1_path: { type: 'string' },
+          photo_2_path: { type: 'string' },
+          photo_3_path: { type: 'string' },
+          photo_4_path: { type: 'string' },
+          photo_5_path: { type: 'string' },
+          photo_6_path: { type: 'string' },
+          photo_7_path: { type: 'string' },
+          photo_8_path: { type: 'string' },
+          photo_9_path: { type: 'string' },
+          photo_10_path: { type: 'string' },
         },
       },
       response: {
@@ -544,11 +564,15 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
     const data = body.data;
 
     // Verificar se tem fotos e atualizar status automaticamente
-    const hasPhotos = data.foto_1_path || data.foto_2_path || data.foto_3_path ||
-                      data.foto_4_path || data.foto_5_path ||
-                      existingVistoria.foto_1_path || existingVistoria.foto_2_path ||
-                      existingVistoria.foto_3_path || existingVistoria.foto_4_path ||
-                      existingVistoria.foto_5_path;
+    const hasPhotos = data.photo_1_path || data.photo_2_path || data.photo_3_path ||
+                      data.photo_4_path || data.photo_5_path || data.photo_6_path ||
+                      data.photo_7_path || data.photo_8_path || data.photo_9_path ||
+                      data.photo_10_path ||
+                      existingVistoria.photo_1_path || existingVistoria.photo_2_path ||
+                      existingVistoria.photo_3_path || existingVistoria.photo_4_path ||
+                      existingVistoria.photo_5_path || existingVistoria.photo_6_path ||
+                      existingVistoria.photo_7_path || existingVistoria.photo_8_path ||
+                      existingVistoria.photo_9_path || existingVistoria.photo_10_path;
 
     // Se tem fotos e está pendente, mudar para aprovada (se não tiver status explícito)
     if (hasPhotos && existingVistoria.status === 'pendente' && !data.status) {
@@ -592,7 +616,7 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
         required: ['id', 'photoNumber'],
         properties: {
           id: { type: 'string', format: 'uuid' },
-          photoNumber: { type: 'number', minimum: 1, maximum: 5 },
+          photoNumber: { type: 'number', minimum: 1, maximum: 10 },
         },
       },
       body: {
@@ -638,7 +662,7 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const photoField = `foto_${photoNumber}_path`;
+    const photoField = `photo_${photoNumber}_path`;
     const updateData: any = { [photoField]: url };
 
     // Se estava pendente e está adicionando foto, atualizar para aprovada
@@ -672,7 +696,7 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
         required: ['id', 'photoNumber'],
         properties: {
           id: { type: 'string', format: 'uuid' },
-          photoNumber: { type: 'number', minimum: 1, maximum: 5 },
+          photoNumber: { type: 'number', minimum: 1, maximum: 10 },
         },
       },
       response: {
@@ -709,7 +733,7 @@ const vistoriasRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const photoField = `foto_${photoNumber}_path`;
+    const photoField = `photo_${photoNumber}_path`;
 
     await prisma.vistoria.update({
       where: { id },
