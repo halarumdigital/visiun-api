@@ -977,6 +977,11 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
 
     const motorcycle = await prisma.motorcycle.findFirst({
       where,
+      include: {
+        franchisee: {
+          select: { id: true, fantasy_name: true, company_name: true },
+        },
+      },
       orderBy: { created_at: 'desc' },
     });
 

@@ -194,6 +194,7 @@ model City {
   campaign_responses CampaignResponse[]
   distratos         Distrato[]
   vendas            Venda[]
+  financialExpenses FinancialExpense[]
 
   @@map("cities")
 }
@@ -234,6 +235,7 @@ model Franchisee {
   survey_responses     SurveyResponse[]
   campaign_responses   CampaignResponse[]
   distratos            Distrato[]
+  financialExpenses    FinancialExpense[]
 
   @@index([city_id])
   @@index([cnpj])
@@ -756,6 +758,27 @@ model LancamentoRecorrenteHistorico {
   @@index([recorrente_id])
   @@index([financeiro_id])
   @@map("lancamentos_recorrentes_historico")
+}
+
+model FinancialExpense {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  franchisee_id    String   @db.Uuid
+  city_id          String   @db.Uuid
+  expense_type     String
+  amount           Decimal  @db.Decimal(10, 2)
+  reference_month  Int
+  reference_year   Int
+  motorcycle_count Int?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  franchisee       Franchisee @relation(fields: [franchisee_id], references: [id])
+  city             City       @relation(fields: [city_id], references: [id])
+
+  @@unique([franchisee_id, expense_type, reference_month, reference_year])
+  @@index([franchisee_id])
+  @@index([reference_year, reference_month])
+  @@map("financial_expenses")
 }
 
 model Rastreador {

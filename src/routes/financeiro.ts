@@ -753,6 +753,199 @@ const financeiroRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * GET /api/financeiro/all
+   * Listar todos os lançamentos sem paginação
+   */
+  app.get('/all', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar todos os lançamentos financeiros sem paginação',
+      tags: ['Financeiro'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          franchisee_id: { type: 'string', format: 'uuid' },
+          tipo: { type: 'string', enum: ['entrada', 'saida'] },
+          data_inicio: { type: 'string', format: 'date' },
+          data_fim: { type: 'string', format: 'date' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { franchisee_id, tipo, data_inicio, data_fim } = request.query as {
+      franchisee_id?: string;
+      tipo?: string;
+      data_inicio?: string;
+      data_fim?: string;
+    };
+
+    const context = getContext(request);
+    const where: any = {};
+
+    const roleFilter = context.getFranchiseeFilter();
+    Object.assign(where, roleFilter);
+
+    if (franchisee_id) where.franchisee_id = franchisee_id;
+    if (tipo) where.tipo = tipo;
+
+    if (data_inicio || data_fim) {
+      where.data = {};
+      if (data_inicio) where.data.gte = new Date(data_inicio);
+      if (data_fim) where.data.lte = new Date(data_fim);
+    }
+
+    const lancamentos = await prisma.financeiro.findMany({
+      where,
+      include: {
+        motorcycle: { select: { placa: true, modelo: true } },
+        categoria: { select: { nome: true, tipo: true } },
+      },
+      orderBy: { data: 'asc' },
+    });
+
+    // Buscar recorrente_ids via historico
+    const lancamentoIds = lancamentos.map(l => l.id);
+    const historico = lancamentoIds.length > 0
+      ? await prisma.lancamentoRecorrenteHistorico.findMany({
+          where: { financeiro_id: { in: lancamentoIds } },
+          select: { financeiro_id: true, recorrente_id: true },
+        })
+      : [];
+
+    const historicoMap = new Map(historico.map(h => [h.financeiro_id, h.recorrente_id]));
+
+    const data = lancamentos.map(l => ({
+      ...l,
+      valor: Number(l.valor),
+      motorcycles: l.motorcycle ? { placa: l.motorcycle.placa, modelo: l.motorcycle.modelo } : undefined,
+      categorias_financeiro: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo } : undefined,
+      recorrente_id: historicoMap.get(l.id) || undefined,
+    }));
+
+    return reply.status(200).send({
+      success: true,
+      data,
+      total: data.length,
+    });
+  });
+
+  /**
+   * GET /api/financeiro/expenses
+   * Listar despesas customizadas do DRE
+   */
+  app.get('/expenses', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar despesas customizadas por mês/ano',
+      tags: ['Financeiro'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        required: ['reference_year', 'reference_month'],
+        properties: {
+          reference_year: { type: 'number' },
+          reference_month: { type: 'number' },
+          franchisee_id: { type: 'string', format: 'uuid' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { reference_year, reference_month, franchisee_id } = request.query as {
+      reference_year: number;
+      reference_month: number;
+      franchisee_id?: string;
+    };
+
+    const where: any = {
+      reference_year: Number(reference_year),
+      reference_month: Number(reference_month),
+    };
+
+    if (franchisee_id) {
+      where.franchisee_id = franchisee_id;
+    }
+
+    const expenses = await prisma.financialExpense.findMany({ where });
+
+    const result: Record<string, number> = {};
+    expenses.forEach((e: any) => {
+      result[e.expense_type] = Number(e.amount);
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: result,
+    });
+  });
+
+  /**
+   * POST /api/financeiro/expenses
+   * Criar ou atualizar despesa customizada (upsert)
+   */
+  app.post('/expenses', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Criar ou atualizar despesa customizada do DRE',
+      tags: ['Financeiro'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['franchisee_id', 'city_id', 'expense_type', 'amount', 'reference_month', 'reference_year'],
+        properties: {
+          franchisee_id: { type: 'string', format: 'uuid' },
+          city_id: { type: 'string', format: 'uuid' },
+          expense_type: { type: 'string' },
+          amount: { type: 'number' },
+          reference_month: { type: 'number', minimum: 1, maximum: 12 },
+          reference_year: { type: 'number' },
+          motorcycle_count: { type: 'number' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { franchisee_id, city_id, expense_type, amount, reference_month, reference_year, motorcycle_count } =
+      request.body as {
+        franchisee_id: string;
+        city_id: string;
+        expense_type: string;
+        amount: number;
+        reference_month: number;
+        reference_year: number;
+        motorcycle_count?: number;
+      };
+
+    const expense = await prisma.financialExpense.upsert({
+      where: {
+        franchisee_id_expense_type_reference_month_reference_year: {
+          franchisee_id,
+          expense_type,
+          reference_month,
+          reference_year,
+        },
+      },
+      update: {
+        amount,
+        motorcycle_count,
+      },
+      create: {
+        franchisee_id,
+        city_id,
+        expense_type,
+        amount,
+        reference_month,
+        reference_year,
+        motorcycle_count,
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: expense,
+    });
+  });
+
+  /**
    * GET /api/financeiro/categorias
    * Listar categorias financeiras
    */
