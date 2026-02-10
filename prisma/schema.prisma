@@ -850,19 +850,30 @@ model Vistoria {
 }
 
 model AuditLog {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id     String?  @db.Uuid
-  action      String
-  entity_type String?
-  entity_id   String?
-  old_data    Json?
-  new_data    Json?
-  ip_address  String?
-  user_agent  String?
-  created_at  DateTime @default(now())
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?  @db.Uuid
+  user_email      String?
+  user_name       String?
+  user_role       String?
+  city_id         String?  @db.Uuid
+  city_name       String?
+  franchisee_id   String?  @db.Uuid
+  franchisee_name String?
+  action          String
+  action_label    String?
+  entity_type     String?
+  entity_id       String?
+  description     String?
+  details         Json?
+  old_data        Json?
+  new_data        Json?
+  changed_fields  String[]
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime @default(now())
 
   // Relações
-  user        AppUser? @relation(fields: [user_id], references: [id])
+  user            AppUser? @relation(fields: [user_id], references: [id])
 
   @@index([user_id])
   @@index([action])

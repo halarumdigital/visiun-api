@@ -18,13 +18,46 @@ interface AuditLogData {
  */
 export class AuditService {
   /**
-   * Registrar log de auditoria
+   * Registrar log de auditoria (enriquece com dados do usuário)
    */
   async log(data: AuditLogData): Promise<void> {
     try {
+      // Buscar dados do usuário para enriquecer o log
+      let userInfo: { email: string; name: string | null; role: string; city_id: string | null; city_name: string | null } | null = null;
+      if (data.userId) {
+        try {
+          const user = await prisma.appUser.findUnique({
+            where: { id: data.userId },
+            select: {
+              email: true,
+              name: true,
+              role: true,
+              city_id: true,
+              city: { select: { name: true } },
+            },
+          });
+          if (user) {
+            userInfo = {
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              city_id: user.city_id,
+              city_name: user.city?.name || null,
+            };
+          }
+        } catch {
+          // Ignorar erro ao buscar usuário
+        }
+      }
+
       await prisma.auditLog.create({
         data: {
           user_id: data.userId,
+          user_email: userInfo?.email,
+          user_name: userInfo?.name,
+          user_role: userInfo?.role,
+          city_id: userInfo?.city_id,
+          city_name: userInfo?.city_name,
           action: data.action,
           entity_type: data.entityType,
           entity_id: data.entityId,
@@ -42,6 +75,7 @@ export class AuditService {
 
   /**
    * Registrar log de auditoria a partir da request
+   * @param explicitUserId - Usar quando request.user não está disponível (ex: login)
    */
   async logFromRequest(
     request: FastifyRequest,
@@ -49,10 +83,11 @@ export class AuditService {
     entityType?: string,
     entityId?: string,
     oldData?: unknown,
-    newData?: unknown
+    newData?: unknown,
+    explicitUserId?: string
   ): Promise<void> {
     await this.log({
-      userId: request.user?.userId,
+      userId: request.user?.userId || explicitUserId,
       action,
       entityType,
       entityId,

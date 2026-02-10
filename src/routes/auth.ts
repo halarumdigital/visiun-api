@@ -159,6 +159,9 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         request,
         AuditActions.LOGIN,
         'user',
+        result.user.id,
+        undefined,
+        undefined,
         result.user.id
       );
 
