@@ -236,6 +236,7 @@ model Franchisee {
   campaign_responses   CampaignResponse[]
   distratos            Distrato[]
   financialExpenses    FinancialExpense[]
+  subscriptions        FranchiseeSubscription[]
 
   @@index([city_id])
   @@index([cnpj])
@@ -1340,6 +1341,109 @@ model AsaasConfig {
   updated_at  DateTime @updatedAt
 
   @@map("asaas_config")
+}
+
+// ============================================
+// BEEMON - Gestão de Multas
+// ============================================
+
+model FranchiseeSubscription {
+  id                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  franchisee_id               String    @db.Uuid
+  service_id                  String    @db.Uuid
+  asaas_customer_id           String?   @db.VarChar
+  asaas_subscription_id       String?   @db.VarChar
+  beemon_fleet_id             String?   @db.VarChar
+  beemon_fleet_identifier     String?   @db.VarChar
+  company_name_beemon         String?   @db.VarChar
+  cnpj_beemon                 String?   @db.VarChar
+  status                      String    @default("pending") @db.VarChar
+  created_at                  DateTime? @default(now()) @db.Timestamptz
+  activated_at                DateTime? @db.Timestamptz
+  cancelled_at                DateTime? @db.Timestamptz
+  next_due_date               DateTime? @db.Date
+  unit_count                  Int?      @default(0)
+  unit_price_at_subscription  Decimal?  @db.Decimal
+  total_value                 Decimal?  @db.Decimal
+  updated_at                  DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  franchisee                  Franchisee @relation(fields: [franchisee_id], references: [id])
+
+  // Relações inversas
+  infractions                 BeemonInfractionCache[]
+  vehicles                    BeemonVehicle[]
+
+  @@unique([franchisee_id, service_id], map: "unique_active_subscription")
+  @@index([franchisee_id], map: "idx_franchisee_subscriptions_franchisee")
+  @@index([service_id], map: "idx_franchisee_subscriptions_service")
+  @@index([status], map: "idx_franchisee_subscriptions_status")
+  @@map("franchisee_subscriptions")
+}
+
+model BeemonInfractionCache {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id         String    @db.Uuid
+  beemon_vehicle_uuid     String?   @db.VarChar
+  vehicle_plate           String?   @db.VarChar
+  beemon_infraction_uuid  String    @db.VarChar
+  ait                     String?   @db.VarChar
+  kind                    String?   @db.VarChar
+  local                   String?
+  amount                  Decimal?  @db.Decimal
+  organ_description       String?
+  framing_description     String?
+  framing_code            String?   @db.VarChar
+  identification_date     DateTime? @db.Date
+  infraction_due_date     DateTime? @db.Date
+  infraction_date         DateTime? @db.Date
+  infraction_hour         DateTime? @db.Time()
+  paid                    Boolean?  @default(false)
+  raw_data                Json?
+  created_at              DateTime? @default(now()) @db.Timestamptz
+  updated_at              DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  subscription            FranchiseeSubscription @relation(fields: [subscription_id], references: [id])
+
+  @@unique([subscription_id, beemon_infraction_uuid], map: "unique_infraction")
+  @@index([subscription_id], map: "idx_beemon_infractions_subscription")
+  @@index([vehicle_plate], map: "idx_beemon_infractions_plate")
+  @@index([infraction_date], map: "idx_beemon_infractions_date")
+  @@map("beemon_infractions_cache")
+}
+
+model BeemonVehicle {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id       String    @db.Uuid
+  motorcycle_id         String    @db.Uuid
+  beemon_vehicle_uuid   String?   @db.VarChar
+  vehicle_plate         String    @db.VarChar
+  renavam               String?   @db.VarChar
+  chassi_code           String?   @db.VarChar
+  state                 String?   @db.VarChar
+  active                Boolean?  @default(true)
+  created_at            DateTime? @default(now()) @db.Timestamptz
+  updated_at            DateTime? @default(now()) @db.Timestamptz
+
+  // Relações
+  subscription          FranchiseeSubscription @relation(fields: [subscription_id], references: [id])
+
+  @@unique([subscription_id, motorcycle_id], map: "unique_vehicle_subscription")
+  @@index([subscription_id], map: "idx_beemon_vehicles_subscription")
+  @@index([motorcycle_id], map: "idx_beemon_vehicles_motorcycle")
+  @@map("beemon_vehicles")
+}
+
+model BeemonToken {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  access_token    String
+  refresh_token   String
+  expires_at      DateTime  @db.Timestamptz
+  created_at      DateTime? @default(now()) @db.Timestamptz
+  updated_at      DateTime? @default(now()) @db.Timestamptz
+
+  @@map("beemon_tokens")
 }
 
 // Tabela de Pagamentos Asaas
