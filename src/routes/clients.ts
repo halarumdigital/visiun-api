@@ -173,14 +173,25 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
   }, async (request, reply) => {
     const data = request.body as any;
 
-    // Verificar se já existe cliente com o mesmo CPF (se CPF foi informado)
+    // Sanitizar CPF: apenas dígitos, deve ter 11 caracteres ou ser null
+    let cpf: string | null = null;
     if (data.cpf) {
+      const cpfClean = data.cpf.replace(/\D/g, '');
+      if (cpfClean.length === 11) {
+        cpf = cpfClean;
+      } else if (cpfClean.length > 0) {
+        throw new BadRequestError('CPF deve ter 11 dígitos');
+      }
+    }
+
+    // Verificar se já existe cliente com o mesmo CPF (se CPF foi informado)
+    if (cpf) {
       const existingClient = await prisma.client.findFirst({
-        where: { cpf: data.cpf },
+        where: { cpf },
       });
 
       if (existingClient) {
-        throw new BadRequestError('Já existe um cliente com este CPF');
+        throw new BadRequestError('Já existe um cliente cadastrado com este CPF');
       }
     }
 
@@ -220,7 +231,7 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
     const client = await prisma.client.create({
       data: {
         full_name: data.full_name,
-        cpf: data.cpf || '',
+        cpf: cpf || '',
         rg: data.rg || null,
         birth_date: data.birth_date ? new Date(data.birth_date) : null,
         phone: data.phone,
@@ -331,7 +342,27 @@ const clientsRoutes: FastifyPluginAsync = async (app) => {
     const updateData: any = {};
 
     if (data.full_name !== undefined) updateData.full_name = data.full_name;
-    if (data.cpf !== undefined) updateData.cpf = data.cpf;
+    if (data.cpf !== undefined) {
+      if (data.cpf) {
+        const cpfClean = data.cpf.replace(/\D/g, '');
+        if (cpfClean.length === 11) {
+          // Verificar duplicidade (excluindo o próprio cliente)
+          const duplicateClient = await prisma.client.findFirst({
+            where: { cpf: cpfClean, id: { not: id } },
+          });
+          if (duplicateClient) {
+            throw new BadRequestError('Já existe um cliente cadastrado com este CPF');
+          }
+          updateData.cpf = cpfClean;
+        } else if (cpfClean.length > 0) {
+          throw new BadRequestError('CPF deve ter 11 dígitos');
+        } else {
+          updateData.cpf = '';
+        }
+      } else {
+        updateData.cpf = '';
+      }
+    }
     if (data.rg !== undefined) updateData.rg = data.rg;
     if (data.birth_date !== undefined) updateData.birth_date = data.birth_date ? new Date(data.birth_date) : null;
     if (data.phone !== undefined) updateData.phone = data.phone;
