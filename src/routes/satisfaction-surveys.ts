@@ -514,12 +514,13 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
     // Para regional, filtrar apenas pela sua cidade
     const filterCityId = context.isMasterOrAdmin() ? city_id : context.cityId;
 
-    // Buscar respostas completas
-    const responses = await prisma.surveyResponse.findMany({
+    const cityFilter = filterCityId ? { city_id: filterCityId } : {};
+
+    // Buscar TODAS as respostas (completed + pending) para contagens corretas
+    const allResponses = await prisma.surveyResponse.findMany({
       where: {
         survey_id: id,
-        status: 'completed',
-        ...(filterCityId && { city_id: filterCityId }),
+        ...cityFilter,
       },
       include: {
         ratings: {
@@ -529,6 +530,7 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
         },
         franchisee: {
           select: {
+            id: true,
             company_name: true,
             fantasy_name: true,
             city_id: true,
@@ -536,6 +538,7 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
         },
         regionalUser: {
           select: {
+            id: true,
             name: true,
             email: true,
           },
@@ -551,8 +554,12 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
       orderBy: { completed_at: 'desc' },
     });
 
+    // Separar respostas completadas e pendentes
+    const completedResponses = allResponses.filter(r => r.status === 'completed');
+    const pendingResponses = allResponses.filter(r => r.status === 'pending');
+
     // Calcular estatísticas
-    const allRatings = responses.flatMap(r => r.ratings.map(rt => rt.rating));
+    const allRatings = completedResponses.flatMap(r => r.ratings.map(rt => rt.rating));
     const averageRating = allRatings.length > 0
       ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length
       : 0;
@@ -564,14 +571,14 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
       ? Math.round(((promoters - detractors) / allRatings.length) * 100)
       : 0;
 
-    // Resultados por critério
+    // Resultados por critério (com min, max, total_ratings)
     const criteriaResults = await prisma.surveyCriteria.findMany({
       where: { survey_id: id },
       orderBy: { order_index: 'asc' },
     });
 
     const resultsByCriteria = criteriaResults.map(criteria => {
-      const criteriaRatings = responses.flatMap(r =>
+      const criteriaRatings = completedResponses.flatMap(r =>
         r.ratings.filter(rt => rt.criteria_id === criteria.id).map(rt => rt.rating)
       );
       return {
@@ -580,47 +587,109 @@ const satisfactionSurveysRoutes: FastifyPluginAsync = async (app) => {
         average_rating: criteriaRatings.length > 0
           ? criteriaRatings.reduce((a, b) => a + b, 0) / criteriaRatings.length
           : 0,
-        total_responses: criteriaRatings.length,
+        total_ratings: criteriaRatings.length,
+        min_rating: criteriaRatings.length > 0 ? Math.min(...criteriaRatings) : null,
+        max_rating: criteriaRatings.length > 0 ? Math.max(...criteriaRatings) : null,
       };
     });
 
-    // Resultados por regional
-    const regionalMap = new Map<string, { name: string; ratings: number[] }>();
-    responses.forEach(response => {
-      if (response.regionalUser) {
-        const key = response.regional_user_id!;
-        if (!regionalMap.has(key)) {
-          regionalMap.set(key, {
-            name: response.regionalUser.name || 'Sem nome',
-            ratings: [],
-          });
-        }
-        response.ratings.forEach(r => {
-          regionalMap.get(key)!.ratings.push(r.rating);
+    // Resultados agrupados por cidade (city_id)
+    const cityMap = new Map<string, {
+      city_name: string;
+      city_slug: string | null;
+      regional_user_id: string | null;
+      regional_name: string | null;
+      regional_email: string | null;
+      completed: number;
+      pending: number;
+      ratings: number[];
+    }>();
+
+    // Processar todas as respostas (completed + pending)
+    allResponses.forEach(response => {
+      const cityId = response.city_id;
+      if (!cityId) return;
+
+      if (!cityMap.has(cityId)) {
+        cityMap.set(cityId, {
+          city_name: response.city?.name || 'Cidade desconhecida',
+          city_slug: response.city?.slug || null,
+          regional_user_id: response.regional_user_id || null,
+          regional_name: response.regionalUser?.name || null,
+          regional_email: response.regionalUser?.email || null,
+          completed: 0,
+          pending: 0,
+          ratings: [],
         });
+      }
+
+      const entry = cityMap.get(cityId)!;
+
+      if (response.status === 'completed') {
+        entry.completed++;
+        response.ratings.forEach(r => {
+          entry.ratings.push(r.rating);
+        });
+      } else if (response.status === 'pending') {
+        entry.pending++;
+      }
+
+      // Atualizar regional info se disponível
+      if (response.regionalUser && !entry.regional_user_id) {
+        entry.regional_user_id = response.regional_user_id;
+        entry.regional_name = response.regionalUser.name;
+        entry.regional_email = response.regionalUser.email;
       }
     });
 
-    const resultsByRegional = Array.from(regionalMap.entries()).map(([id, data]) => ({
-      regional_user_id: id,
-      regional_name: data.name,
+    const resultsByRegional = Array.from(cityMap.entries()).map(([cityId, data]) => ({
+      survey_id: id,
+      city_id: cityId,
+      regional_user_id: data.regional_user_id,
+      regional_name: data.regional_name,
+      regional_email: data.regional_email,
+      city_name: data.city_name,
+      city_slug: data.city_slug,
+      total_responses: data.completed + data.pending,
+      completed_responses: data.completed,
+      pending_responses: data.pending,
       average_rating: data.ratings.length > 0
         ? data.ratings.reduce((a, b) => a + b, 0) / data.ratings.length
         : 0,
-      total_responses: data.ratings.length,
+      promoter_percentage: data.ratings.length > 0
+        ? (data.ratings.filter(r => r >= 9).length / data.ratings.length) * 100
+        : 0,
+      detractor_percentage: data.ratings.length > 0
+        ? (data.ratings.filter(r => r <= 6).length / data.ratings.length) * 100
+        : 0,
+    }));
+
+    // Mapear responses para o formato esperado pelo frontend
+    const mappedResponses = completedResponses.map(response => ({
+      ...response,
+      regional: response.regionalUser ? {
+        id: response.regionalUser.id,
+        name: response.regionalUser.name,
+        email: response.regionalUser.email,
+      } : null,
+      franchisee: response.franchisee ? {
+        id: response.franchisee.id,
+        company_name: response.franchisee.company_name,
+        fantasy_name: response.franchisee.fantasy_name,
+      } : null,
     }));
 
     return reply.status(200).send({
       success: true,
       data: {
         statistics: {
-          totalResponses: responses.length,
+          totalResponses: completedResponses.length,
           averageRating: Math.round(averageRating * 100) / 100,
           nps,
         },
         resultsByCriteria,
         resultsByRegional,
-        responses,
+        responses: mappedResponses,
       },
     });
   });

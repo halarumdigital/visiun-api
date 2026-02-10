@@ -1052,9 +1052,7 @@ model Suggestion {
   user_id         String?  @db.Uuid
   title           String
   description     String
-  category        String?
   status          String   @default("open")
-  admin_response  String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 

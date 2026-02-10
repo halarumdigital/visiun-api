@@ -488,8 +488,26 @@ const campaignSurveysRoutes: FastifyPluginAsync = async (app) => {
     const responseRate = totalResponses > 0 ? Math.round((completedResponses / totalResponses) * 100) : 0;
     const acceptanceRate = completedResponses > 0 ? Math.round((totalAccepted / completedResponses) * 100) : 0;
 
-    // Resultados por cidade
-    const resultsByCity = responses.reduce((acc, r) => {
+    // Resultados individuais por cidade (cada resposta como registro separado)
+    const resultsByCity = responses.map(r => ({
+      response_id: r.id,
+      campaign_id: r.campaign_id,
+      city_id: r.city_id,
+      city_name: r.city?.name || '',
+      city_slug: r.city?.slug || '',
+      regional_user_id: r.franchisee_id,
+      regional_name: r.franchisee?.fantasy_name || r.franchisee?.company_name || '',
+      regional_email: r.franchisee?.email || '',
+      vote: r.status === 'completed' ? r.vote : null,
+      observations: r.observations,
+      status: r.status,
+      voted_at: r.completed_at,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+
+    // Agregação por cidade (para compatibilidade)
+    const cityAggregation = responses.reduce((acc, r) => {
       const cityId = r.city_id;
       if (!acc[cityId]) {
         acc[cityId] = {
@@ -534,7 +552,8 @@ const campaignSurveysRoutes: FastifyPluginAsync = async (app) => {
           acceptance_rate: acceptanceRate,
           response_rate: responseRate,
         },
-        resultsByCity: Object.values(resultsByCity),
+        resultsByCity,
+        cityAggregation: Object.values(cityAggregation),
         responses: responses.map(r => ({
           response_id: r.id,
           campaign_id: r.campaign_id,
