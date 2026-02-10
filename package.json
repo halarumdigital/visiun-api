@@ -2,6 +2,7 @@
   "name": "master-brasil-api",
   "version": "1.0.0",
   "description": "API Backend para City Scope CRM - Master Brasil",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
