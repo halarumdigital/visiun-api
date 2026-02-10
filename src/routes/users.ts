@@ -514,12 +514,12 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
 
   /**
    * DELETE /api/users/:id
-   * Deletar usuário (soft delete - muda status para inactive)
+   * Deletar usuário permanentemente do banco
    */
   app.delete('/:id', {
     preHandler: [authMiddleware, requireMasterOrAdmin()],
     schema: {
-      description: 'Desativar usuário (soft delete)',
+      description: 'Deletar usuário permanentemente',
       tags: ['Usuários'],
       security: [{ bearerAuth: [] }],
       params: {
@@ -555,16 +555,6 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       throw new BadRequestError('Não é possível deletar seu próprio usuário');
     }
 
-    // Soft delete
-    await prisma.appUser.update({
-      where: { id },
-      data: {
-        status: 'inactive',
-        refresh_token: null,
-        refresh_token_expires_at: null,
-      },
-    });
-
     await auditService.logFromRequest(
       request,
       AuditActions.USER_DELETE,
@@ -572,9 +562,51 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       id
     );
 
+    // Buscar todas as FKs que referenciam app_users e limpar dinamicamente
+    const fkRefs: Array<{ table_name: string; column_name: string; is_nullable: string }> = await prisma.$queryRaw`
+      SELECT
+        kcu.table_name,
+        kcu.column_name,
+        c.is_nullable
+      FROM information_schema.referential_constraints rc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = rc.constraint_name
+        AND kcu.constraint_schema = rc.constraint_schema
+      JOIN information_schema.constraint_column_usage ccu
+        ON ccu.constraint_name = rc.unique_constraint_name
+        AND ccu.constraint_schema = rc.unique_constraint_schema
+      JOIN information_schema.columns c
+        ON c.table_name = kcu.table_name
+        AND c.column_name = kcu.column_name
+        AND c.table_schema = kcu.table_schema
+      WHERE ccu.table_name = 'app_users'
+        AND ccu.column_name = 'id'
+        AND kcu.table_schema = 'public'
+    `;
+
+    await prisma.$transaction(async (tx) => {
+      for (const fk of fkRefs) {
+        if (fk.table_name === 'app_users') continue;
+        if (fk.is_nullable === 'YES') {
+          await tx.$executeRawUnsafe(
+            `UPDATE "${fk.table_name}" SET "${fk.column_name}" = NULL WHERE "${fk.column_name}" = $1::uuid`,
+            id
+          );
+        } else {
+          await tx.$executeRawUnsafe(
+            `DELETE FROM "${fk.table_name}" WHERE "${fk.column_name}" = $1::uuid`,
+            id
+          );
+        }
+      }
+
+      // Hard delete
+      await tx.appUser.delete({ where: { id } });
+    }, { timeout: 30000 });
+
     return reply.status(200).send({
       success: true,
-      message: 'Usuário desativado com sucesso',
+      message: 'Usuário apagado permanentemente',
     });
   });
 
