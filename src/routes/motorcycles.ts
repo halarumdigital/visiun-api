@@ -821,6 +821,137 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * GET /api/motorcycles/consolidated
+   * Retorna motos consolidadas por placa (apenas o registro mais recente por placa)
+   * Usa DISTINCT ON do PostgreSQL para performance - elimina processamento client-side
+   */
+  app.get('/consolidated', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar motocicletas consolidadas por placa (registro mais recente por placa)',
+      tags: ['Motocicletas'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          city_id: { type: 'string', format: 'uuid', description: 'ID da cidade para filtrar' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'array', items: motorcycleResponseSchema },
+            total: { type: 'number' },
+          },
+        },
+        401: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const { city_id } = request.query as { city_id?: string };
+      const context = getContext(request);
+
+      // Construir cláusulas WHERE dinâmicas baseadas no role
+      const conditions: string[] = [];
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      // Filtro de role
+      if (context.isFranchisee() && context.franchiseeId) {
+        conditions.push(`m.franchisee_id = $${paramIndex}::uuid`);
+        params.push(context.franchiseeId);
+        paramIndex++;
+      } else if (context.isRegional() && context.cityId) {
+        conditions.push(`m.city_id = $${paramIndex}::uuid`);
+        params.push(context.cityId);
+        paramIndex++;
+      }
+
+      // Filtro de cidade (para master_br que selecionou uma cidade)
+      if (city_id) {
+        conditions.push(`m.city_id = $${paramIndex}::uuid`);
+        params.push(city_id);
+        paramIndex++;
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      // DISTINCT ON (placa) retorna apenas o registro mais recente por placa
+      // Prioriza data_ultima_mov, depois created_at (mesma lógica do frontend)
+      const query = `
+        SELECT
+          m.id, m.placa, m.chassi, m.renavam, m.modelo, m.marca, m.ano, m.cor,
+          m.quilometragem, m.status, m.codigo_cs, m.tipo, m.valor_semanal,
+          m.data_ultima_mov, m.data_criacao, m.city_id, m.franchisee_id,
+          m.doc_moto, m.doc_taxa_intermediacao, m.observacoes,
+          m.created_at, m.updated_at,
+          c.id as city_id_rel, c.name as city_name, c.slug as city_slug,
+          f.id as franchisee_id_rel, f.fantasy_name, f.company_name, f.cnpj, f.city_id as franchisee_city_id
+        FROM (
+          SELECT DISTINCT ON (TRIM(placa)) *
+          FROM motorcycles
+          ${whereClause}
+          ORDER BY TRIM(placa), COALESCE(data_ultima_mov, created_at) DESC
+        ) m
+        LEFT JOIN cities c ON m.city_id = c.id
+        LEFT JOIN franchisees f ON m.franchisee_id = f.id
+        ORDER BY m.created_at DESC
+      `;
+
+      const motorcycles: any[] = await prisma.$queryRawUnsafe(query, ...params);
+
+      // Formatar para manter compatibilidade com o formato existente
+      const formatted = motorcycles.map(m => ({
+        id: m.id,
+        placa: m.placa,
+        chassi: m.chassi,
+        renavam: m.renavam,
+        modelo: m.modelo,
+        marca: m.marca,
+        ano: m.ano,
+        cor: m.cor,
+        quilometragem: m.quilometragem,
+        status: m.status,
+        codigo_cs: m.codigo_cs,
+        tipo: m.tipo,
+        valor_semanal: m.valor_semanal ? Number(m.valor_semanal) : null,
+        data_ultima_mov: m.data_ultima_mov,
+        data_criacao: m.data_criacao,
+        city_id: m.city_id,
+        franchisee_id: m.franchisee_id,
+        doc_moto: m.doc_moto,
+        doc_taxa_intermediacao: m.doc_taxa_intermediacao,
+        observacoes: m.observacoes,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+        city: m.city_id_rel ? { id: m.city_id_rel, name: m.city_name, slug: m.city_slug } : null,
+        franchisee: m.franchisee_id_rel ? {
+          id: m.franchisee_id_rel,
+          fantasy_name: m.fantasy_name,
+          company_name: m.company_name,
+          cnpj: m.cnpj,
+          city_id: m.franchisee_city_id,
+        } : null,
+      }));
+
+      return reply.status(200).send({
+        success: true,
+        data: formatted,
+        total: formatted.length,
+      });
+    } catch (error) {
+      console.error('[motorcycles/consolidated] Error:', error);
+      return reply.status(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro interno ao buscar motocicletas consolidadas',
+      });
+    }
+  });
+
+  /**
    * GET /api/motorcycles/stats
    * Estatísticas da frota
    */

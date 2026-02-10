@@ -36,7 +36,8 @@
       "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
       "Bash(. \"$NVM_DIR/nvm.sh\")",
       "Bash(node_modules/.bin/tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npm install @sentry/node --save --prefix /media/gilliard/Desenvolvimento1/LocAgora/Master-Brasil-API)"
     ]
   }
 }

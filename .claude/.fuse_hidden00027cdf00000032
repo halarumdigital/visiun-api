@@ -34,7 +34,9 @@
       "Bash(node -e:*)",
       "Bash(export:*)",
       "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
-      "Bash(. \"$NVM_DIR/nvm.sh\")"
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

@@ -1,9 +1,18 @@
+import * as Sentry from '@sentry/node';
 import { createServer } from 'http';
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { initializeRealtime } from './websocket/index.js';
 import { logger } from './utils/logger.js';
+
+// Inicializar Sentry antes de tudo
+Sentry.init({
+  dsn: env.SENTRY_DSN,
+  environment: env.NODE_ENV,
+  sendDefaultPii: true,
+  enabled: !!env.SENTRY_DSN,
+});
 
 async function main() {
   try {
@@ -37,6 +46,7 @@ async function main() {
         logger.info(`Received ${signal}, shutting down gracefully...`);
 
         try {
+          await Sentry.flush(2000);
           await app.close();
           await disconnectDatabase();
           logger.info('Server shut down successfully');

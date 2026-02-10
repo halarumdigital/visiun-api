@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -311,7 +312,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
 
-    // Erro interno desconhecido
+    // Erro interno desconhecido - capturar no Sentry
+    Sentry.captureException(error, {
+      extra: {
+        url: request.url,
+        method: request.method,
+        params: request.params,
+        query: request.query,
+      },
+    });
+
     return reply.status(500).send({
       success: false,
       error: env.NODE_ENV === 'production'

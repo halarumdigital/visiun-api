@@ -125,10 +125,9 @@ export const loginRateLimit = rateLimit({
 
 /**
  * Rate limit para requisições de API gerais
- * NOTA: Temporariamente muito alto para resolver problema de múltiplas requisições
  */
 export const apiRateLimit = rateLimit({
-  max: 100000,
+  max: 2000,
   windowMs: 60 * 1000, // 1 minuto
 });
 
@@ -136,7 +135,7 @@ export const apiRateLimit = rateLimit({
  * Rate limit para uploads (mais restritivo)
  */
 export const uploadRateLimit = rateLimit({
-  max: 10,
+  max: 30,
   windowMs: 60 * 1000, // 1 minuto
   keyGenerator: (request) => {
     const ip = request.ip || 'unknown';

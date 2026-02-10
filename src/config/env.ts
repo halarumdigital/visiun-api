@@ -48,6 +48,9 @@ const envSchema = z.object({
   ASAAS_API_URL: z.string().url().optional(),
   ASAAS_API_KEY: z.string().optional(),
 
+  // Sentry
+  SENTRY_DSN: z.string().url().optional(),
+
   // Rate Limiting
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),

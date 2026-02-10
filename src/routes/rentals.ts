@@ -1044,6 +1044,7 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         properties: {
           city_id: { type: 'string', format: 'uuid', description: 'ID da cidade para filtrar' },
+          slim: { type: 'string', enum: ['true', 'false'], description: 'Se true, retorna apenas campos essenciais (para Dashboard)' },
         },
       },
       response: {
@@ -1059,7 +1060,7 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
       },
     },
   }, async (request, reply) => {
-    const { city_id } = request.query as { city_id?: string };
+    const { city_id, slim } = request.query as { city_id?: string; slim?: string };
     const context = getContext(request);
     const where: any = {};
 
@@ -1084,6 +1085,32 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           total: 0,
         });
       }
+    }
+
+    // Modo slim: retorna apenas campos essenciais (para Dashboard - reduz payload ~80%)
+    if (slim === 'true') {
+      const rentals = await prisma.rental.findMany({
+        where,
+        select: {
+          id: true,
+          start_date: true,
+          status: true,
+          daily_rate: true,
+          motorcycle_plate: true,
+          motorcycle_id: true,
+          franchisee_id: true,
+          motorcycle: {
+            select: { id: true, placa: true, tipo: true },
+          },
+        },
+        orderBy: { start_date: 'desc' },
+      });
+
+      return reply.status(200).send({
+        success: true,
+        data: rentals,
+        total: rentals.length,
+      });
     }
 
     const rentals = await prisma.rental.findMany({
