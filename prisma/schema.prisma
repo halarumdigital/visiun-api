@@ -1344,6 +1344,31 @@ model AsaasConfig {
 }
 
 // ============================================
+// MARKETPLACE
+// ============================================
+
+model MarketplaceService {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String    @db.VarChar
+  description     String?
+  price           Decimal?  @db.Decimal
+  billing_cycle   String?   @db.VarChar
+  status          String    @default("active") @db.VarChar
+  features        Json?
+  icon            String?   @db.VarChar
+  pricing_type    String?   @default("per_unit") @db.VarChar
+  unit_price      Decimal?  @db.Decimal
+  unit_label      String?   @default("placa") @db.VarChar
+  created_at      DateTime? @default(now()) @db.Timestamptz
+  updated_at      DateTime? @default(now()) @db.Timestamptz
+
+  // Relações inversas
+  subscriptions   FranchiseeSubscription[]
+
+  @@map("marketplace_services")
+}
+
+// ============================================
 // BEEMON - Gestão de Multas
 // ============================================
 
@@ -1369,6 +1394,7 @@ model FranchiseeSubscription {
 
   // Relações
   franchisee                  Franchisee @relation(fields: [franchisee_id], references: [id])
+  service                     MarketplaceService @relation(fields: [service_id], references: [id])
 
   // Relações inversas
   infractions                 BeemonInfractionCache[]
