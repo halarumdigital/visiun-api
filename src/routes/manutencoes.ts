@@ -1340,6 +1340,261 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+
+  // ========================================
+  // SUGESTÕES DE MANUTENÇÃO (Aceite do Franqueado)
+  // ========================================
+
+  /**
+   * GET /api/manutencoes/sugestoes-pendentes
+   * Buscar ordens de serviço pendentes de aceite pelo franqueado
+   */
+  app.get('/sugestoes-pendentes', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Buscar sugestões de manutenção pendentes para o franqueado',
+      tags: ['Manutenções'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+
+    if (context.role !== 'franchisee' || !context.franchiseeId) {
+      return reply.status(200).send({ success: true, data: [] });
+    }
+
+    // Buscar motos do franqueado
+    const motos = await prisma.motorcycle.findMany({
+      where: { franchisee_id: context.franchiseeId },
+      select: { id: true, placa: true, modelo: true },
+    });
+
+    if (motos.length === 0) {
+      return reply.status(200).send({ success: true, data: [] });
+    }
+
+    const motoIds = motos.map(m => m.id);
+    const motoMap = new Map(motos.map(m => [m.id, { placa: m.placa, modelo: m.modelo }]));
+
+    // Buscar ordens de serviço pendentes
+    const ordens = await prisma.ordemServico.findMany({
+      where: {
+        motorcycle_id: { in: motoIds },
+        OR: [
+          { aceite_franqueado: null },
+          { aceite_franqueado: 'pendente' },
+        ],
+      },
+      orderBy: { data_abertura: 'desc' },
+    });
+
+    const result = ordens.map(os => {
+      const motoInfo = os.motorcycle_id ? motoMap.get(os.motorcycle_id) : null;
+      return {
+        id: os.id,
+        numero_os: os.numero_os,
+        data_abertura: os.data_abertura?.toISOString() || null,
+        data_previsao: os.data_previsao?.toISOString() || null,
+        status: os.status,
+        valor_total: os.valor_total ? Number(os.valor_total) : 0,
+        descricao_problema: os.descricao_problema,
+        tipo_manutencao: os.tipo_manutencao,
+        motorcycle_id: os.motorcycle_id,
+        placa: motoInfo?.placa || null,
+        modelo: motoInfo?.modelo || null,
+        franchisee_id: context.franchiseeId,
+        aceite_franqueado: os.aceite_franqueado,
+      };
+    });
+
+    return reply.status(200).send({ success: true, data: result });
+  });
+
+  /**
+   * POST /api/manutencoes/:id/aceitar
+   * Aceitar uma sugestão de manutenção e criar lançamento financeiro
+   */
+  app.post('/:id/aceitar', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Aceitar sugestão de manutenção e criar lançamento financeiro de saída',
+      tags: ['Manutenções'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as { observacao?: string } || {};
+
+    if (context.role !== 'franchisee' || !context.franchiseeId) {
+      return reply.status(403).send({ success: false, error: 'Apenas franqueados podem aceitar sugestões' });
+    }
+
+    // Buscar a ordem de serviço com moto
+    const os = await prisma.ordemServico.findUnique({
+      where: { id },
+      include: {
+        motorcycle: { select: { placa: true, modelo: true, franchisee_id: true } },
+      },
+    });
+
+    if (!os) {
+      return reply.status(404).send({ success: false, error: 'Ordem de serviço não encontrada' });
+    }
+
+    if (os.motorcycle?.franchisee_id !== context.franchiseeId) {
+      return reply.status(403).send({ success: false, error: 'Esta ordem de serviço não pertence ao seu franqueado' });
+    }
+
+    if (os.aceite_franqueado === 'aceito') {
+      return reply.status(400).send({ success: false, error: 'Esta ordem de serviço já foi aceita' });
+    }
+
+    // Buscar categoria "Manutenção"
+    const categorias = await prisma.categoriaFinanceiro.findMany({
+      where: { nome: 'Manutenção', ativo: true },
+    });
+    const categoriaManutencao = categorias.find(c => c.tipo === 'saida' || c.tipo === 'ambos');
+
+    if (!categoriaManutencao) {
+      return reply.status(400).send({ success: false, error: 'Categoria "Manutenção" não encontrada' });
+    }
+
+    // Criar lançamento financeiro de saída
+    const lancamento = await prisma.financeiro.create({
+      data: {
+        franchisee_id: context.franchiseeId,
+        tipo: 'saida',
+        placa: os.motorcycle?.placa || null,
+        categoria_id: categoriaManutencao.id,
+        valor: os.valor_total ? Number(os.valor_total) : 0,
+        data: os.data_abertura ? new Date(os.data_abertura.toISOString().split('T')[0]) : new Date(),
+        descricao: `Manutenção OS ${os.numero_os}: ${os.motorcycle?.modelo || os.motorcycle?.placa || ''}${body.observacao ? ` - ${body.observacao}` : ''}`,
+        pago: true,
+        created_by: context.userId,
+      },
+    });
+
+    // Atualizar ordem de serviço como aceita
+    await prisma.ordemServico.update({
+      where: { id },
+      data: {
+        aceite_franqueado: 'aceito',
+        aceite_data: new Date(),
+        financeiro_id: lancamento.id,
+        aceite_observacao: body.observacao || null,
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: { message: 'Sugestão aceita e lançamento financeiro criado', financeiro_id: lancamento.id },
+    });
+  });
+
+  /**
+   * POST /api/manutencoes/:id/recusar
+   * Recusar uma sugestão de manutenção
+   */
+  app.post('/:id/recusar', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Recusar sugestão de manutenção',
+      tags: ['Manutenções'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as { observacao?: string } || {};
+
+    if (context.role !== 'franchisee' || !context.franchiseeId) {
+      return reply.status(403).send({ success: false, error: 'Apenas franqueados podem recusar sugestões' });
+    }
+
+    // Buscar a ordem de serviço com moto
+    const os = await prisma.ordemServico.findUnique({
+      where: { id },
+      include: {
+        motorcycle: { select: { franchisee_id: true } },
+      },
+    });
+
+    if (!os) {
+      return reply.status(404).send({ success: false, error: 'Ordem de serviço não encontrada' });
+    }
+
+    if (os.motorcycle?.franchisee_id !== context.franchiseeId) {
+      return reply.status(403).send({ success: false, error: 'Esta ordem de serviço não pertence ao seu franqueado' });
+    }
+
+    // Atualizar ordem de serviço como recusada
+    await prisma.ordemServico.update({
+      where: { id },
+      data: {
+        aceite_franqueado: 'recusado',
+        aceite_data: new Date(),
+        aceite_observacao: body.observacao || null,
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: { message: 'Sugestão recusada com sucesso' },
+    });
+  });
+
+  /**
+   * GET /api/manutencoes/sugestoes-pendentes/count
+   * Contar sugestões pendentes (para badge/notificação)
+   */
+  app.get('/sugestoes-pendentes/count', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Contar sugestões de manutenção pendentes',
+      tags: ['Manutenções'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+
+    if (context.role !== 'franchisee' || !context.franchiseeId) {
+      return reply.status(200).send({ success: true, data: { count: 0 } });
+    }
+
+    const motos = await prisma.motorcycle.findMany({
+      where: { franchisee_id: context.franchiseeId },
+      select: { id: true },
+    });
+
+    if (motos.length === 0) {
+      return reply.status(200).send({ success: true, data: { count: 0 } });
+    }
+
+    const motoIds = motos.map(m => m.id);
+
+    const count = await prisma.ordemServico.count({
+      where: {
+        motorcycle_id: { in: motoIds },
+        OR: [
+          { aceite_franqueado: null },
+          { aceite_franqueado: 'pendente' },
+        ],
+      },
+    });
+
+    return reply.status(200).send({ success: true, data: { count } });
+  });
 };
 
 export default manutencoesRoutes;
