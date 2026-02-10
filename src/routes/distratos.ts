@@ -21,6 +21,9 @@ const createDistratoSchema = z.object({
   city_id: z.string().uuid().optional().nullable(),
   rental_id: z.string().uuid().optional().nullable(),
   termo_url: z.string().optional().nullable(),
+  client_name: z.string().optional().nullable(),
+  modelo_moto: z.string().optional().nullable(),
+  data_distrato: z.string().optional().nullable(),
 });
 
 const updateDistratoSchema = z.object({
@@ -427,11 +430,14 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
         data: {
           placa: data.placa,
           franqueado: data.franqueado,
-          inicio_ctt: new Date(data.inicio_ctt),
-          fim_ctt: new Date(data.fim_ctt),
+          inicio_ctt: isNaN(new Date(data.inicio_ctt).getTime()) ? new Date() : new Date(data.inicio_ctt),
+          fim_ctt: isNaN(new Date(data.fim_ctt).getTime()) ? new Date() : new Date(data.fim_ctt),
           motivo: data.motivo,
           causa: data.causa,
           termo_url: data.termo_url,
+          client_name: data.client_name,
+          modelo_moto: data.modelo_moto,
+          data_distrato: data.data_distrato ? new Date(data.data_distrato) : undefined,
           franchisee: data.franchisee_id ? { connect: { id: data.franchisee_id } } : undefined,
           city: data.city_id ? { connect: { id: data.city_id } } : undefined,
           rental: data.rental_id ? { connect: { id: data.rental_id } } : undefined,

@@ -37,6 +37,8 @@ import driversRoutes from './routes/drivers.js';
 import vendasRoutes from './routes/vendas.js';
 import rastreadoresRoutes from './routes/rastreadores.js';
 import manutencoesRoutes from './routes/manutencoes.js';
+import asaasConfigRoutes from './routes/asaas-config.js';
+import asaasPaymentsRoutes from './routes/asaas-payments.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -214,6 +216,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(vendasRoutes, { prefix: '/api/vendas' });
   await app.register(rastreadoresRoutes, { prefix: '/api/rastreadores' });
   await app.register(manutencoesRoutes, { prefix: '/api/manutencoes' });
+  await app.register(asaasConfigRoutes, { prefix: '/api/asaas-config' });
+  await app.register(asaasPaymentsRoutes, { prefix: '/api/asaas-payments' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {

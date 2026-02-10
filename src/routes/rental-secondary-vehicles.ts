@@ -63,6 +63,53 @@ const CAMPOS_OBRIGATORIOS_MOTO = ['placa', 'modelo', 'marca', 'chassi', 'renavam
 
 const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
   /**
+   * GET /api/rentals/with-active-addendum
+   * Retorna IDs de locações que possuem veículo secundário ativo
+   */
+  app.get('/with-active-addendum', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Listar IDs de locações com veículo secundário ativo',
+      tags: ['Veiculos Secundarios'],
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const context = getContext(request);
+
+    const where: any = { status: 'active' };
+
+    // Filtrar por contexto do usuário
+    if (context.isFranchisee()) {
+      where.rental = { franchisee_id: context.franchiseeId };
+    } else if (context.isRegional()) {
+      where.rental = { city_id: context.cityId };
+    }
+
+    const activeSecondaryVehicles = await prisma.rentalSecondaryVehicle.findMany({
+      where,
+      select: { rental_id: true },
+      distinct: ['rental_id'],
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: activeSecondaryVehicles.map(sv => sv.rental_id),
+    });
+  });
+
+  /**
    * GET /api/rentals/:rentalId/secondary-vehicles
    * Listar veiculos secundarios de uma locacao
    */
@@ -155,6 +202,20 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
               cor: true,
               chassi: true,
               renavam: true,
+            },
+          },
+          rental: {
+            select: {
+              motorcycle_id: true,
+              motorcycle_plate: true,
+              motorcycle: {
+                select: {
+                  id: true,
+                  placa: true,
+                  modelo: true,
+                  marca: true,
+                },
+              },
             },
           },
           creator: {
@@ -618,6 +679,34 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
+      // 3. Criar registro de movimento na aba Gestão de Motos
+      const dataCriacaoAntiga = motorcycle.data_ultima_mov
+        ? new Date(new Date(motorcycle.data_ultima_mov).getTime() - 86400000)
+        : new Date(new Date().getTime() - 86400000);
+
+      await tx.motorcycle.create({
+        data: {
+          placa: motorcycle.placa,
+          chassi: motorcycle.chassi,
+          renavam: motorcycle.renavam,
+          modelo: motorcycle.modelo,
+          marca: motorcycle.marca,
+          ano: motorcycle.ano,
+          cor: motorcycle.cor,
+          quilometragem: motorcycle.quilometragem,
+          status: 'alugada',
+          codigo_cs: motorcycle.codigo_cs,
+          tipo: motorcycle.tipo,
+          valor_semanal: motorcycle.valor_semanal,
+          data_ultima_mov: new Date(),
+          data_criacao: dataCriacaoAntiga,
+          city_id: motorcycle.city_id,
+          franchisee_id: motorcycle.franchisee_id,
+          franqueado: motorcycle.franqueado,
+          observacoes: `Aditivo - Veículo reserva vinculado à locação. Motivo: ${motivo || 'Manutenção'}`,
+        },
+      });
+
       return secondary;
     });
 
@@ -733,6 +822,37 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
           data_ultima_mov: new Date(),
         },
       });
+
+      // 3. Criar registro de movimento na aba Gestão de Motos
+      if (secondaryVehicle.motorcycle) {
+        const moto = secondaryVehicle.motorcycle;
+        const dataCriacaoAntiga = moto.data_ultima_mov
+          ? new Date(new Date(moto.data_ultima_mov).getTime() - 86400000)
+          : new Date(new Date().getTime() - 86400000);
+
+        await tx.motorcycle.create({
+          data: {
+            placa: moto.placa,
+            chassi: moto.chassi,
+            renavam: moto.renavam,
+            modelo: moto.modelo,
+            marca: moto.marca,
+            ano: moto.ano,
+            cor: moto.cor,
+            quilometragem: moto.quilometragem,
+            status: 'active',
+            codigo_cs: moto.codigo_cs,
+            tipo: moto.tipo,
+            valor_semanal: moto.valor_semanal,
+            data_ultima_mov: new Date(),
+            data_criacao: dataCriacaoAntiga,
+            city_id: moto.city_id,
+            franchisee_id: moto.franchisee_id,
+            franqueado: moto.franqueado,
+            observacoes: `Aditivo encerrado - Veículo reserva devolvido e disponível`,
+          },
+        });
+      }
 
       return updated;
     });
@@ -1491,6 +1611,88 @@ CPF:`;
     const updated = await prisma.rentalSecondaryVehicle.update({
       where: { id },
       data: { termo_aditivo_url },
+      include: {
+        motorcycle: {
+          select: {
+            id: true,
+            placa: true,
+            modelo: true,
+            marca: true,
+          },
+        },
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: updated,
+    });
+  });
+
+  /**
+   * PUT /api/rentals/:rentalId/secondary-vehicles/:id/signature-status
+   * Atualizar status de assinatura do termo aditivo
+   */
+  app.put('/:rentalId/secondary-vehicles/:id/signature-status', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Atualizar status de assinatura do termo aditivo',
+      tags: ['Veiculos Secundarios'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['rentalId', 'id'],
+        properties: {
+          rentalId: { type: 'string', format: 'uuid' },
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+      body: {
+        type: 'object',
+        required: ['signature_status'],
+        properties: {
+          signature_status: { type: 'string', enum: ['draft', 'pending_signature', 'signed'] },
+          document_key: { type: 'string' },
+          signature_request_id: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: secondaryVehicleResponseSchema,
+          },
+        },
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { rentalId, id } = request.params as { rentalId: string; id: string };
+    const { signature_status, document_key, signature_request_id } = request.body as {
+      signature_status: string;
+      document_key?: string;
+      signature_request_id?: string;
+    };
+
+    const secondaryVehicle = await prisma.rentalSecondaryVehicle.findFirst({
+      where: { id, rental_id: rentalId },
+    });
+
+    if (!secondaryVehicle) {
+      throw new NotFoundError('Veiculo secundario nao encontrado');
+    }
+
+    const updateData: any = { termo_status: signature_status };
+    if (document_key) updateData.document_key = document_key;
+    if (signature_request_id) updateData.signature_request_id = signature_request_id;
+    if (signature_status === 'signed') updateData.signed_at = new Date();
+
+    const updated = await prisma.rentalSecondaryVehicle.update({
+      where: { id },
+      data: updateData,
       include: {
         motorcycle: {
           select: {

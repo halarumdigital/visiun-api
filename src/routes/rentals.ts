@@ -896,17 +896,6 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-      // Registrar movimento
-      await tx.motorcycleMovement.create({
-        data: {
-          motorcycle_id: rental.motorcycle_id,
-          previous_status: 'alugada',
-          new_status: 'active',
-          reason: `Locação finalizada - ID: ${id}`,
-          created_by: context.userId,
-        },
-      });
-
       return updated;
     });
 
@@ -1012,17 +1001,6 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
         data: {
           status: 'active',
           data_ultima_mov: new Date(),
-        },
-      });
-
-      // Registrar movimento
-      await tx.motorcycleMovement.create({
-        data: {
-          motorcycle_id: rental.motorcycle_id,
-          previous_status: 'alugada',
-          new_status: 'active',
-          reason: `Locação cancelada - ID: ${id}${reason ? ` - ${reason}` : ''}`,
-          created_by: context.userId,
         },
       });
 

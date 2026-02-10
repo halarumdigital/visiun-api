@@ -24,7 +24,25 @@ const franchiseeResponseSchema = {
     status: { type: 'string', nullable: true },
     royalties_percentage: { type: 'number', nullable: true },
     moto_limit: { type: 'number', nullable: true },
+    cooperloc_motos_count: { type: 'number', nullable: true },
+    asaas_token: { type: 'string', nullable: true },
+    master_user_id: { type: 'string', format: 'uuid', nullable: true },
     user_id: { type: 'string', format: 'uuid', nullable: true },
+    cities: {
+      type: 'object',
+      nullable: true,
+      properties: { name: { type: 'string' } },
+    },
+    app_users: {
+      type: 'object',
+      nullable: true,
+      properties: { email: { type: 'string' } },
+    },
+    master_user: {
+      type: 'object',
+      nullable: true,
+      properties: { name: { type: 'string' }, email: { type: 'string' } },
+    },
     created_at: { type: 'string', format: 'date-time' },
     updated_at: { type: 'string', format: 'date-time' },
   },
@@ -54,6 +72,9 @@ const createFranchiseeSchema = z.object({
   status: z.string().optional().nullable().default('active'),
   royalties_percentage: z.number().optional().nullable(),
   moto_limit: z.number().int().optional().nullable(),
+  cooperloc_motos_count: z.number().int().optional().nullable(),
+  asaas_token: z.string().optional().nullable(),
+  master_user_id: z.string().uuid().optional().nullable(),
   user_id: z.string().uuid().optional().nullable(),
 });
 
@@ -121,20 +142,51 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
         city_id: true,
         royalties_percentage: true,
         moto_limit: true,
+        cooperloc_motos_count: true,
+        asaas_token: true,
+        master_user_id: true,
         status: true,
         created_at: true,
         updated_at: true,
+        city: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: [
         { fantasy_name: 'asc' },
       ],
     });
 
+    // Buscar emails dos usuários vinculados
+    const userIds = franchisees.map(f => f.user_id).filter(Boolean) as string[];
+    const users = userIds.length > 0
+      ? await prisma.appUser.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true },
+        })
+      : [];
+    const userMap = Object.fromEntries(users.map(u => [u.id, u.email]));
+
+    // Buscar nomes dos master_users (regionais)
+    const masterUserIds = franchisees.map(f => f.master_user_id).filter(Boolean) as string[];
+    const masterUsers = masterUserIds.length > 0
+      ? await prisma.appUser.findMany({
+          where: { id: { in: masterUserIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const masterUserMap = Object.fromEntries(masterUsers.map(u => [u.id, { name: u.name, email: u.email }]));
+
     return reply.status(200).send({
       success: true,
       data: franchisees.map(f => ({
         ...f,
         royalties_percentage: f.royalties_percentage ? Number(f.royalties_percentage) : null,
+        cities: f.city ? { name: f.city.name } : null,
+        app_users: f.user_id && userMap[f.user_id] ? { email: userMap[f.user_id] } : null,
+        master_user: f.master_user_id && masterUserMap[f.master_user_id]
+          ? masterUserMap[f.master_user_id]
+          : null,
       })),
     });
   });
@@ -345,6 +397,9 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
         status: body.status || 'active',
         royalties_percentage: body.royalties_percentage,
         moto_limit: body.moto_limit,
+        cooperloc_motos_count: body.cooperloc_motos_count,
+        asaas_token: body.asaas_token,
+        master_user_id: body.master_user_id,
         user_id: body.user_id,
       },
     });
@@ -445,6 +500,9 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
           status: { type: 'string' },
           royalties_percentage: { type: 'number', nullable: true },
           moto_limit: { type: 'number', nullable: true },
+          cooperloc_motos_count: { type: 'number', nullable: true },
+          asaas_token: { type: 'string', nullable: true },
+          master_user_id: { type: 'string', format: 'uuid', nullable: true },
         },
       },
       response: {
@@ -501,6 +559,9 @@ const franchiseesRoutes: FastifyPluginAsync = async (app) => {
         status: body.status,
         royalties_percentage: body.royalties_percentage,
         moto_limit: body.moto_limit,
+        cooperloc_motos_count: body.cooperloc_motos_count,
+        asaas_token: body.asaas_token,
+        master_user_id: body.master_user_id,
         user_id: body.user_id,
       },
     });

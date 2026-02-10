@@ -63,19 +63,6 @@ const motorcycleResponseSchema = {
   },
 };
 
-const movementResponseSchema = {
-  type: 'object',
-  properties: {
-    id: { type: 'string', format: 'uuid' },
-    motorcycle_id: { type: 'string', format: 'uuid' },
-    previous_status: { type: 'string' },
-    new_status: { type: 'string' },
-    reason: { type: 'string', nullable: true },
-    created_by: { type: 'string', format: 'uuid', nullable: true },
-    created_at: { type: 'string', format: 'date-time' },
-  },
-};
-
 const paginationSchema = {
   type: 'object',
   properties: {
@@ -331,10 +318,6 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
           where: { status: 'active' },
           include: { driver: true },
         },
-        movements: {
-          orderBy: { created_at: 'desc' },
-          take: 10,
-        },
       },
     });
 
@@ -564,17 +547,9 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    // Se estiver alterando status, registrar movimento
+    // Atualizar data_ultima_mov se status mudou
     if (data.status && data.status !== existingMoto.status) {
-      await prisma.motorcycleMovement.create({
-        data: {
-          motorcycle_id: id,
-          previous_status: existingMoto.status,
-          new_status: data.status,
-          reason: 'Status alterado manualmente',
-          created_by: context.userId,
-        },
-      });
+      (data as any).data_ultima_mov = new Date();
     }
 
     const motorcycle = await prisma.motorcycle.update({
@@ -685,24 +660,13 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       throw new BadRequestError('Status "alugada" só pode ser definido via criação de locação');
     }
 
-    await prisma.$transaction([
-      prisma.motorcycle.update({
-        where: { id },
-        data: {
-          status: status as any,
-          data_ultima_mov: new Date(),
-        },
-      }),
-      prisma.motorcycleMovement.create({
-        data: {
-          motorcycle_id: id,
-          previous_status: motorcycle.status,
-          new_status: status,
-          reason: reason || 'Status alterado manualmente',
-          created_by: context.userId,
-        },
-      }),
-    ]);
+    await prisma.motorcycle.update({
+      where: { id },
+      data: {
+        status: status as any,
+        data_ultima_mov: new Date(),
+      },
+    });
 
     await auditService.logFromRequest(
       request,
@@ -716,77 +680,6 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(200).send({
       success: true,
       data: { id, status },
-    });
-  });
-
-  /**
-   * GET /api/motorcycles/:id/movements
-   * Histórico de movimentações da motocicleta
-   */
-  app.get('/:id/movements', {
-    preHandler: [authMiddleware, rbac()],
-    schema: {
-      description: 'Histórico de movimentações da motocicleta',
-      tags: ['Motocicletas'],
-      security: [{ bearerAuth: [] }],
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
-        },
-      },
-      querystring: {
-        type: 'object',
-        properties: {
-          page: { type: 'number', minimum: 1, default: 1, description: 'Página atual' },
-          limit: { type: 'number', minimum: 1, maximum: 100, default: 20, description: 'Itens por página' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: { type: 'array', items: movementResponseSchema },
-            pagination: paginationSchema,
-          },
-        },
-        401: errorResponseSchema,
-        404: errorResponseSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const { page = 1, limit = 20 } = request.query as { page?: number; limit?: number };
-
-    const motorcycle = await prisma.motorcycle.findUnique({
-      where: { id },
-    });
-
-    if (!motorcycle) {
-      throw new NotFoundError('Motocicleta não encontrada');
-    }
-
-    const [movements, total] = await Promise.all([
-      prisma.motorcycleMovement.findMany({
-        where: { motorcycle_id: id },
-        orderBy: { created_at: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.motorcycleMovement.count({ where: { motorcycle_id: id } }),
-    ]);
-
-    return reply.status(200).send({
-      success: true,
-      data: movements,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
     });
   });
 
