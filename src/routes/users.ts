@@ -156,27 +156,29 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
     const isMinimal = fields === 'minimal';
 
     const [users, total] = await Promise.all([
-      prisma.appUser.findMany({
-        where,
-        ...(isMinimal
-          ? {
-              select: {
-                id: true,
-                name: true,
-                city_id: true,
-                city: { select: { id: true, name: true } },
-              },
-            }
-          : {
-              include: {
-                city: true,
-                franchisee: true,
-              },
-            }),
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { [orderBy]: orderDir },
-      }),
+      isMinimal
+        ? prisma.appUser.findMany({
+            where,
+            select: {
+              id: true,
+              name: true,
+              city_id: true,
+              city: { select: { id: true, name: true } },
+            },
+            skip: (page - 1) * limit,
+            take: limit,
+            orderBy: { [orderBy]: orderDir },
+          })
+        : prisma.appUser.findMany({
+            where,
+            include: {
+              city: true,
+              franchisee: true,
+            },
+            skip: (page - 1) * limit,
+            take: limit,
+            orderBy: { [orderBy]: orderDir },
+          }),
       prisma.appUser.count({ where }),
     ]);
 

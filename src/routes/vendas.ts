@@ -218,8 +218,18 @@ const vendasRoutes: FastifyPluginAsync = async (app) => {
 
     const venda = await prisma.venda.create({
       data: {
-        ...body,
         data_compra,
+        parceiro: body.parceiro,
+        status: body.status,
+        entregue: body.entregue,
+        franqueado: body.franqueado,
+        cnpj: body.cnpj,
+        razao_social: body.razao_social,
+        quantidade: body.quantidade,
+        marca: body.marca,
+        modelo: body.modelo,
+        valor_unitario: body.valor_unitario,
+        valor_total: body.valor_total,
         city_id,
       },
       include: { city: true },

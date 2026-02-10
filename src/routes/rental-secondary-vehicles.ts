@@ -702,7 +702,6 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
           data_criacao: dataCriacaoAntiga,
           city_id: motorcycle.city_id,
           franchisee_id: motorcycle.franchisee_id,
-          franqueado: motorcycle.franqueado,
           observacoes: `Aditivo - Veículo reserva vinculado à locação. Motivo: ${motivo || 'Manutenção'}`,
         },
       });
@@ -848,7 +847,6 @@ const rentalSecondaryVehiclesRoutes: FastifyPluginAsync = async (app) => {
             data_criacao: dataCriacaoAntiga,
             city_id: moto.city_id,
             franchisee_id: moto.franchisee_id,
-            franqueado: moto.franqueado,
             observacoes: `Aditivo encerrado - Veículo reserva devolvido e disponível`,
           },
         });

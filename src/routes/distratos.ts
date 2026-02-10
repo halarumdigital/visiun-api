@@ -504,7 +504,6 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
             data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
             city_id: moto.city_id,
             franchisee_id: moto.franchisee_id,
-            franqueado: moto.franqueado,
             observacoes: `Distrato - Causa: ${data.causa}. Motivo: ${data.motivo}`,
           },
         });
@@ -761,7 +760,6 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
             data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
             city_id: motoExistente.city_id,
             franchisee_id: motoExistente.franchisee_id,
-            franqueado: motoExistente.franqueado,
             observacoes: `Distrato - Causa: ${causa}. Motivo: ${motivo}`,
           },
         });
@@ -948,7 +946,6 @@ const distratosRoutes: FastifyPluginAsync = async (app) => {
             data_criacao: dataCriacaoAntiga, // Data antiga para não ser o mais recente da placa
             city_id: motoExistente.city_id,
             franchisee_id: motoExistente.franchisee_id,
-            franqueado: motoExistente.franqueado,
             observacoes: `Distrato - Causa: ${distrato.causa}. Motivo: ${distrato.motivo}`,
           },
         });

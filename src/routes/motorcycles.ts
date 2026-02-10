@@ -539,7 +539,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
 
     // Se estiver alterando placa, verificar unicidade
     if (data.placa && data.placa.toUpperCase() !== existingMoto.placa) {
-      const placaExists = await prisma.motorcycle.findUnique({
+      const placaExists = await prisma.motorcycle.findFirst({
         where: { placa: data.placa.toUpperCase() },
       });
       if (placaExists) {

@@ -827,7 +827,7 @@ const campaignSurveysRoutes: FastifyPluginAsync = async (app) => {
       success: true,
       data: [
         { action: 'Campanhas criadas', count: totalCreated },
-        { action: 'Franquias atualizadas', count: franchisees.length },
+        { action: 'Franquias atualizadas', count: franchiseesSync.length },
       ],
     });
   });
