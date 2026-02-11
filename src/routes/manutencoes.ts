@@ -311,10 +311,10 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
 
       // Filtro de cidade nos agendamentos (via oficina)
       if (context.role === 'master_br' && query.city_id) {
-        conditions.push(`o.city_id = $${paramIndex++}`);
+        conditions.push(`o.city_id = $${paramIndex++}::uuid`);
         params.push(query.city_id);
       } else if (context.role !== 'master_br' && context.cityId) {
-        conditions.push(`o.city_id = $${paramIndex++}`);
+        conditions.push(`o.city_id = $${paramIndex++}::uuid`);
         params.push(context.cityId);
       }
 
@@ -451,6 +451,104 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * POST /api/manutencoes
+   * Criar uma nova ordem de serviço (com serviços e peças opcionais)
+   */
+  app.post('/', {
+    preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Criar uma nova ordem de serviço',
+      tags: ['Manutenções'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const body = request.body as any;
+    const authContext = getContext(request);
+
+    try {
+      // Gerar numero_os
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const numero_os = body.numero_os || `OS${timestamp}${random}`;
+
+      // Inserir a OS
+      const osResult = await prisma.$queryRawUnsafe<{ id: string }[]>(
+        `INSERT INTO ordens_servico (
+          id, numero_os, motorcycle_id, oficina_id, profissional_id,
+          data_previsao, status, tipo_manutencao, km_atual,
+          descricao_problema, valor_pecas, valor_servicos, valor_total,
+          observacoes, created_by, city_id, locatario, data_abertura
+        ) VALUES (
+          gen_random_uuid(), $1, $2::uuid, $3::uuid, $4::uuid,
+          $5::timestamp, $6, $7, $8,
+          $9, $10::numeric, $11::numeric, $12::numeric,
+          $13, $14::uuid, $15::uuid, $16, NOW()
+        ) RETURNING id::text`,
+        numero_os,
+        body.motorcycle_id,
+        body.oficina_id,
+        body.profissional_id || null,
+        body.data_previsao ? new Date(body.data_previsao) : new Date(),
+        body.status || 'agendado',
+        body.tipo_manutencao || 'preventiva',
+        body.km_atual ? parseInt(body.km_atual) : null,
+        body.descricao_problema || null,
+        Number(body.valor_pecas) || 0,
+        Number(body.valor_servicos) || 0,
+        Number(body.valor_total) || 0,
+        body.observacoes || null,
+        authContext.userId,
+        body.city_id || null,
+        body.locatario || null
+      );
+
+      const osId = osResult[0]?.id;
+      if (!osId) {
+        throw new Error('Falha ao criar ordem de serviço');
+      }
+
+      // Inserir serviços
+      if (body.servicos && body.servicos.length > 0) {
+        for (const s of body.servicos) {
+          await prisma.$queryRawUnsafe(
+            `INSERT INTO ordens_servico_servicos (id, ordem_servico_id, servico_id, quantidade, preco_unitario, observacoes)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::integer, $4::numeric, $5)`,
+            osId, s.servico_id, Number(s.quantidade) || 1, Number(s.preco_unitario) || 0, s.observacoes || null
+          );
+        }
+      }
+
+      // Inserir peças e baixar estoque
+      if (body.pecas && body.pecas.length > 0) {
+        for (const p of body.pecas) {
+          const qtd = Number(p.quantidade) || 1;
+          await prisma.$queryRawUnsafe(
+            `INSERT INTO ordens_servico_pecas (id, ordem_servico_id, peca_id, quantidade, preco_unitario)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::integer, $4::numeric)`,
+            osId, p.peca_id, qtd, Number(p.preco_unitario) || 0
+          );
+          // Baixar estoque
+          await prisma.$queryRawUnsafe(
+            `UPDATE pecas SET estoque_atual = GREATEST(estoque_atual - $1, 0) WHERE id = $2::uuid`,
+            qtd, p.peca_id
+          );
+        }
+      }
+
+      return reply.status(201).send({
+        success: true,
+        data: { id: osId, numero_os, message: 'Ordem de serviço criada com sucesso' },
+      });
+    } catch (error: any) {
+      app.log.error({ err: error }, 'Erro ao criar OS');
+      return reply.status(500).send({
+        success: false,
+        error: error.message || 'Erro ao criar ordem de serviço',
+      });
+    }
+  });
+
+  /**
    * GET /api/manutencoes/oficinas
    * Buscar oficinas ativas (filtrado por cidade)
    */
@@ -478,7 +576,7 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
     // Filtro de cidade
     const cityId = query.city_id || (context.role !== 'master_br' ? context.cityId : null);
     if (cityId) {
-      conditions.push(`city_id = $${paramIndex++}`);
+      conditions.push(`city_id = $${paramIndex++}::uuid`);
       params.push(cityId);
     }
 
@@ -740,15 +838,15 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
       if (f) franchiseeData = { company_name: f.company_name || '', whatsapp_01: f.whatsapp_01 };
     }
 
-    // Buscar locatário e número de locação via rental
+    // Buscar locatário e número de locação via rental (busca por placa para evitar problemas com múltiplos motorcycle_id)
     let locatarioNome = os.locatario || '';
     let numeroLocacao = '';
-    if (os.motorcycle_id) {
+    if (os.motorcycle?.placa) {
       const rentals = await prisma.$queryRawUnsafe<{ id: string; client_name: string }[]>(
         `SELECT id::text, client_name FROM rentals
-         WHERE motorcycle_id = $1::uuid
+         WHERE motorcycle_plate = $1
          ORDER BY created_at DESC LIMIT 1`,
-        os.motorcycle_id
+        os.motorcycle.placa
       );
       if (rentals[0]) {
         if (!locatarioNome && rentals[0].client_name) locatarioNome = rentals[0].client_name;

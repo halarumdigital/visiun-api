@@ -119,7 +119,7 @@ const updateMotorcycleSchema = createMotorcycleSchema.partial().extend({
 
 const querySchema = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
+  limit: z.coerce.number().min(1).max(5000).default(20),
   search: z.string().optional(),
   status: z.enum([
     'active', 'alugada', 'relocada', 'manutencao', 'recolhida',
@@ -193,7 +193,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         properties: {
           page: { type: 'number', minimum: 1, default: 1, description: 'Página atual' },
-          limit: { type: 'number', minimum: 1, maximum: 100, default: 20, description: 'Itens por página' },
+          limit: { type: 'number', minimum: 1, maximum: 5000, default: 20, description: 'Itens por página' },
           search: { type: 'string', description: 'Busca por placa, modelo ou chassi' },
           status: { type: 'string', enum: motorcycleStatusEnum, description: 'Status da motocicleta' },
           franchisee_id: { type: 'string', format: 'uuid', description: 'ID do franqueado' },

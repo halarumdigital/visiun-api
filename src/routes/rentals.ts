@@ -145,6 +145,7 @@ const querySchema = z.object({
   franchisee_id: z.string().uuid().optional(),
   city_id: z.string().uuid().optional(),
   motorcycle_id: z.string().uuid().optional(),
+  motorcycle_plate: z.string().optional(),
   client_cpf: z.string().optional(),
   start_date_from: z.string().optional(),
   start_date_to: z.string().optional(),
@@ -172,6 +173,7 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
           franchisee_id: { type: 'string', format: 'uuid', description: 'ID do franqueado' },
           city_id: { type: 'string', format: 'uuid', description: 'ID da cidade' },
           motorcycle_id: { type: 'string', format: 'uuid', description: 'ID da motocicleta' },
+          motorcycle_plate: { type: 'string', description: 'Placa da motocicleta' },
           client_cpf: { type: 'string', description: 'CPF do cliente' },
           start_date_from: { type: 'string', format: 'date', description: 'Data início (de)' },
           start_date_to: { type: 'string', format: 'date', description: 'Data início (até)' },
@@ -200,7 +202,7 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
 
     const {
       page, limit, status, franchisee_id, city_id,
-      motorcycle_id, client_cpf, start_date_from, start_date_to,
+      motorcycle_id, motorcycle_plate, client_cpf, start_date_from, start_date_to,
       orderBy, orderDir
     } = query.data;
 
@@ -218,6 +220,7 @@ const rentalsRoutes: FastifyPluginAsync = async (app) => {
     if (franchisee_id) where.franchisee_id = franchisee_id;
     if (city_id) where.city_id = city_id;
     if (motorcycle_id) where.motorcycle_id = motorcycle_id;
+    if (motorcycle_plate) where.motorcycle_plate = motorcycle_plate;
     if (client_cpf) where.client_cpf = { contains: client_cpf };
 
     if (start_date_from || start_date_to) {
