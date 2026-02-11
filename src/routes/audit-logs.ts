@@ -92,7 +92,7 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (user_id) {
-      conditions.push(`al.user_id = $${paramIdx++}`);
+      conditions.push(`al.user_id = $${paramIdx++}::uuid`);
       params.push(user_id);
     }
 
@@ -108,7 +108,7 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
 
     // Regional só vê logs da sua cidade
     if (context.role === 'regional' && context.cityId) {
-      conditions.push(`(al.city_id = $${paramIdx} OR au_direct.city_id = $${paramIdx} OR au_entity.city_id = $${paramIdx})`);
+      conditions.push(`(al.city_id = $${paramIdx}::uuid OR au_direct.city_id = $${paramIdx}::uuid OR au_entity.city_id = $${paramIdx}::uuid)`);
       params.push(context.cityId);
       paramIdx++;
     }
@@ -208,16 +208,27 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
       ${whereClause}
     `;
 
-    const [data, countResult] = await Promise.all([
-      prisma.$queryRawUnsafe(dataQuery, ...params) as Promise<any[]>,
-      prisma.$queryRawUnsafe(countQuery, ...params) as Promise<{ total: number }[]>,
-    ]);
+    try {
+      const [data, countResult] = await Promise.all([
+        prisma.$queryRawUnsafe(dataQuery, ...params) as Promise<any[]>,
+        prisma.$queryRawUnsafe(countQuery, ...params) as Promise<{ total: number }[]>,
+      ]);
 
-    return reply.status(200).send({
-      success: true,
-      data,
-      count: countResult[0]?.total ?? 0,
-    });
+      // BigInt safety: Prisma $queryRawUnsafe pode retornar BigInt para COUNT
+      const count = Number(countResult[0]?.total ?? 0);
+
+      return reply.status(200).send({
+        success: true,
+        data,
+        count,
+      });
+    } catch (error: any) {
+      request.log.error({ error: error.message, role: context.role, cityId: context.cityId }, 'Erro ao buscar audit logs');
+      return reply.status(500).send({
+        success: false,
+        error: error.message || 'Erro ao buscar logs de auditoria',
+      });
+    }
   });
 
   /**
