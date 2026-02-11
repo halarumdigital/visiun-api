@@ -859,20 +859,20 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       const params: any[] = [];
       let paramIndex = 1;
 
-      // Filtro de role
+      // Filtro de role (sem prefixo de alias - usado dentro da subquery)
       if (context.isFranchisee() && context.franchiseeId) {
-        conditions.push(`m.franchisee_id = $${paramIndex}::uuid`);
+        conditions.push(`franchisee_id = $${paramIndex}::uuid`);
         params.push(context.franchiseeId);
         paramIndex++;
       } else if (context.isRegional() && context.cityId) {
-        conditions.push(`m.city_id = $${paramIndex}::uuid`);
+        conditions.push(`city_id = $${paramIndex}::uuid`);
         params.push(context.cityId);
         paramIndex++;
       }
 
       // Filtro de cidade (para master_br que selecionou uma cidade)
       if (city_id) {
-        conditions.push(`m.city_id = $${paramIndex}::uuid`);
+        conditions.push(`city_id = $${paramIndex}::uuid`);
         params.push(city_id);
         paramIndex++;
       }
