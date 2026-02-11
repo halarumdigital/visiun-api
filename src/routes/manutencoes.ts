@@ -153,73 +153,77 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
       orderBy: { data_abertura: 'desc' },
     });
 
-    // ====== Buscar dados relacionais via raw queries (tabelas sem modelo Prisma) ======
-
-    // Buscar oficinas
+    // ====== Buscar dados relacionais em PARALELO (antes era sequencial) ======
     const oficinaIds = [...new Set(ordens.map(o => o.oficina_id).filter(Boolean))] as string[];
-    let oficinasMap = new Map<string, string>();
-    if (oficinaIds.length > 0) {
-      const oficinas = await prisma.$queryRawUnsafe<{ id: string; nome: string }[]>(
-        `SELECT id::text, nome FROM oficinas WHERE id = ANY($1::uuid[])`,
-        oficinaIds
-      );
-      oficinas.forEach(o => oficinasMap.set(o.id, o.nome));
-    }
-
-    // Buscar profissionais
     const profissionalIds = [...new Set(ordens.map(o => o.profissional_id).filter(Boolean))] as string[];
-    let profissionaisMap = new Map<string, string>();
-    if (profissionalIds.length > 0) {
-      const profissionais = await prisma.$queryRawUnsafe<{ id: string; nome: string }[]>(
-        `SELECT id::text, nome FROM profissionais WHERE id = ANY($1::uuid[])`,
-        profissionalIds
-      );
-      profissionais.forEach(p => profissionaisMap.set(p.id, p.nome));
-    }
-
-    // Buscar franqueados via motorcycle.franchisee_id
     const franchiseeIds = [...new Set(ordens.map(o => o.motorcycle?.franchisee_id).filter(Boolean))] as string[];
-    let franchiseesMap = new Map<string, { company_name: string; fantasy_name: string | null; city_id: string }>();
-    if (franchiseeIds.length > 0) {
-      const franchisees = await prisma.franchisee.findMany({
-        where: { id: { in: franchiseeIds } },
-        select: { id: true, company_name: true, fantasy_name: true, city_id: true },
-      });
-      franchisees.forEach(f => franchiseesMap.set(f.id, { company_name: f.company_name || '', fantasy_name: f.fantasy_name || null, city_id: f.city_id }));
-    }
-
-    // Buscar locatários via rentals (último rental de cada moto)
     const motorcycleIds = [...new Set(ordens.map(o => o.motorcycle_id).filter(Boolean))] as string[];
-    let locatarioMap = new Map<string, string>();
-    if (motorcycleIds.length > 0) {
-      const rentals = await prisma.$queryRawUnsafe<{ motorcycle_id: string; client_name: string }[]>(
-        `SELECT DISTINCT ON (motorcycle_id) motorcycle_id::text, client_name
-         FROM rentals
-         WHERE motorcycle_id = ANY($1::uuid[])
-         ORDER BY motorcycle_id, created_at DESC`,
-        motorcycleIds
-      );
-      rentals.forEach(r => {
-        if (r.client_name) locatarioMap.set(r.motorcycle_id, r.client_name);
-      });
-    }
-
-    // Buscar campos de vistoria via raw SQL (não estão no modelo Prisma)
     const ordemIds = ordens.map(o => o.id);
-    let vistoriaMap = new Map<string, any>();
-    if (ordemIds.length > 0) {
-      const vistoriaRows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT id::text,
-                vistoria_1_antes, vistoria_1_depois,
-                vistoria_2_antes, vistoria_2_depois,
-                vistoria_3_antes, vistoria_3_depois,
-                vistoria_4_antes, vistoria_4_depois,
-                vistoria_5_antes, vistoria_5_depois
-         FROM ordens_servico WHERE id = ANY($1::uuid[])`,
-        ordemIds
-      );
-      vistoriaRows.forEach(v => vistoriaMap.set(v.id, v));
-    }
+
+    const [oficinasResult, profissionaisResult, franchiseesResult, rentalsResult, vistoriaResult] = await Promise.all([
+      // Oficinas
+      oficinaIds.length > 0
+        ? prisma.$queryRawUnsafe<{ id: string; nome: string }[]>(
+            `SELECT id::text, nome FROM oficinas WHERE id = ANY($1::uuid[])`,
+            oficinaIds
+          )
+        : Promise.resolve([]),
+      // Profissionais
+      profissionalIds.length > 0
+        ? prisma.$queryRawUnsafe<{ id: string; nome: string }[]>(
+            `SELECT id::text, nome FROM profissionais WHERE id = ANY($1::uuid[])`,
+            profissionalIds
+          )
+        : Promise.resolve([]),
+      // Franqueados
+      franchiseeIds.length > 0
+        ? prisma.franchisee.findMany({
+            where: { id: { in: franchiseeIds } },
+            select: { id: true, company_name: true, fantasy_name: true, city_id: true },
+          })
+        : Promise.resolve([]),
+      // Locatários
+      motorcycleIds.length > 0
+        ? prisma.$queryRawUnsafe<{ motorcycle_id: string; client_name: string }[]>(
+            `SELECT DISTINCT ON (motorcycle_id) motorcycle_id::text, client_name
+             FROM rentals
+             WHERE motorcycle_id = ANY($1::uuid[])
+             ORDER BY motorcycle_id, created_at DESC`,
+            motorcycleIds
+          )
+        : Promise.resolve([]),
+      // Vistorias
+      ordemIds.length > 0
+        ? prisma.$queryRawUnsafe<any[]>(
+            `SELECT id::text,
+                    vistoria_1_antes, vistoria_1_depois,
+                    vistoria_2_antes, vistoria_2_depois,
+                    vistoria_3_antes, vistoria_3_depois,
+                    vistoria_4_antes, vistoria_4_depois,
+                    vistoria_5_antes, vistoria_5_depois
+             FROM ordens_servico WHERE id = ANY($1::uuid[])`,
+            ordemIds
+          )
+        : Promise.resolve([]),
+    ]);
+
+    // Construir maps a partir dos resultados
+    const oficinasMap = new Map<string, string>();
+    oficinasResult.forEach((o: any) => oficinasMap.set(o.id, o.nome));
+
+    const profissionaisMap = new Map<string, string>();
+    profissionaisResult.forEach((p: any) => profissionaisMap.set(p.id, p.nome));
+
+    const franchiseesMap = new Map<string, { company_name: string; fantasy_name: string | null; city_id: string }>();
+    franchiseesResult.forEach((f: any) => franchiseesMap.set(f.id, { company_name: f.company_name || '', fantasy_name: f.fantasy_name || null, city_id: f.city_id }));
+
+    const locatarioMap = new Map<string, string>();
+    rentalsResult.forEach((r: any) => {
+      if (r.client_name) locatarioMap.set(r.motorcycle_id, r.client_name);
+    });
+
+    const vistoriaMap = new Map<string, any>();
+    vistoriaResult.forEach((v: any) => vistoriaMap.set(v.id, v));
 
     // Mapear ordens de serviço com todos os dados relacionais
     const mappedOrdens = ordens.map(o => {

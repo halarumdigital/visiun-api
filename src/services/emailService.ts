@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
-import { logger } from '../config/logger.js';
+import { logger } from '../utils/logger.js';
 
 class EmailService {
   private async getSmtpConfig(): Promise<Record<string, string>> {
@@ -43,7 +43,7 @@ class EmailService {
     const transporter = await this.createTransporter();
 
     const fromEmail = config.smtp_from_email || config.smtp_user;
-    const fromName = config.smtp_from_name || 'Master Brasil';
+    const fromName = config.smtp_from_name || 'Visiun';
     const resetLink = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
     const html = `
@@ -61,7 +61,7 @@ class EmailService {
           <!-- Header -->
           <tr>
             <td style="background-color:#2D3E95;padding:32px;text-align:center;">
-              <h1 style="color:#ffffff;margin:0;font-size:24px;">Master Brasil</h1>
+              <h1 style="color:#ffffff;margin:0;font-size:24px;">Visiun</h1>
             </td>
           </tr>
           <!-- Body -->
@@ -100,7 +100,7 @@ class EmailService {
           <tr>
             <td style="background-color:#f8f9fa;padding:24px 32px;text-align:center;">
               <p style="color:#aaaaaa;font-size:12px;margin:0;">
-                &copy; ${new Date().getFullYear()} Master Brasil. Todos os direitos reservados.
+                &copy; ${new Date().getFullYear()} Visiun. Todos os direitos reservados.
               </p>
             </td>
           </tr>
@@ -114,7 +114,7 @@ class EmailService {
     await transporter.sendMail({
       from: `"${fromName}" <${fromEmail}>`,
       to: email,
-      subject: 'Redefinição de senha - Master Brasil',
+      subject: 'Redefinição de senha - Visiun',
       html,
     });
 
