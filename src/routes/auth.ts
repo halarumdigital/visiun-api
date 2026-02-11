@@ -351,7 +351,6 @@ const authRoutes: FastifyPluginAsync = async (app) => {
           properties: {
             success: { type: 'boolean' },
             message: { type: 'string' },
-            resetToken: { type: 'string', description: 'Token (apenas em desenvolvimento)' },
           },
         },
       },
@@ -375,12 +374,9 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       { email }
     );
 
-    // Em produção, não retornar o token - enviar por email
     return reply.status(200).send({
       success: true,
       message: 'Se o email existir, você receberá instruções para redefinir sua senha.',
-      // TODO: Remover em produção - apenas para desenvolvimento
-      resetToken: token,
     });
   });
 

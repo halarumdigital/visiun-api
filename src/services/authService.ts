@@ -19,6 +19,7 @@ import {
 } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { nanoid } from 'nanoid';
+import { emailService } from './emailService.js';
 
 const SALT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -338,9 +339,13 @@ export class AuthService {
 
     logger.info({ userId: user.id, email }, 'Password reset token generated');
 
-    // Aqui você integraria com serviço de email
-    // Por enquanto, retornamos o token (em produção, enviar por email)
-    return resetToken;
+    try {
+      await emailService.sendPasswordResetEmail(user.email, user.name, resetToken);
+    } catch (err) {
+      logger.error({ err, email }, 'Failed to send password reset email');
+    }
+
+    return 'Se o email existir, você receberá instruções para redefinir sua senha.';
   }
 
   /**
