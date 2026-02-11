@@ -44,6 +44,7 @@ import oficinasRoutes from './routes/oficinas.js';
 import profissionaisRoutes from './routes/profissionais.js';
 import estoqueRoutes from './routes/estoque.js';
 import asaasConfigRoutes from './routes/asaas-config.js';
+import smtpConfigRoutes from './routes/smtp-config.js';
 import asaasPaymentsRoutes from './routes/asaas-payments.js';
 import recorrentesRoutes from './routes/recorrentes.js';
 import auditLogsRoutes from './routes/audit-logs.js';
@@ -232,6 +233,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(profissionaisRoutes, { prefix: '/api/profissionais' });
   await app.register(estoqueRoutes, { prefix: '/api/estoque' });
   await app.register(asaasConfigRoutes, { prefix: '/api/asaas-config' });
+  await app.register(smtpConfigRoutes, { prefix: '/api/smtp-config' });
   await app.register(asaasPaymentsRoutes, { prefix: '/api/asaas-payments' });
   await app.register(recorrentesRoutes, { prefix: '/api/financeiro/recorrentes' });
   await app.register(auditLogsRoutes, { prefix: '/api/audit-logs' });

@@ -8,7 +8,7 @@ import { BadRequestError } from '../utils/errors.js';
 
 // Schemas de validação
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   password: z.string().min(1, 'Senha é obrigatória'),
 });
 
@@ -17,7 +17,7 @@ const refreshTokenSchema = z.object({
 });
 
 const requestResetSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
 });
 
 const resetPasswordSchema = z.object({
@@ -31,7 +31,7 @@ const changePasswordSchema = z.object({
 });
 
 const registerSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').optional(),
 });
@@ -42,7 +42,7 @@ const loginCnpjSchema = z.object({
 
 const franchiseeSetupSchema = z.object({
   franchiseeId: z.string().min(1, 'ID do franqueado é obrigatório'),
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
@@ -109,7 +109,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         required: ['email', 'password'],
         properties: {
-          email: { type: 'string', format: 'email', description: 'Email do usuário' },
+          email: { type: 'string', description: 'Email do usuário' },
           password: { type: 'string', minLength: 1, description: 'Senha do usuário' },
         },
       },
@@ -342,7 +342,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         required: ['email'],
         properties: {
-          email: { type: 'string', format: 'email', description: 'Email do usuário' },
+          email: { type: 'string', description: 'Email do usuário' },
         },
       },
       response: {
