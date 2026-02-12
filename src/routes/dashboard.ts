@@ -73,6 +73,7 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         manutencoesHojeResult,
         receitaMensalResult,
         statusFrotaResult,
+        mapaLocacoesResult,
       ] = await Promise.all([
         // 1. KPIs globais
         prisma.$queryRawUnsafe<any[]>(`
@@ -200,6 +201,24 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
             COALESCE(SUM(total_operacional), 0)::int AS total_operacional
           FROM vw_fleet_stats_by_franchisee
           ${filterWhereSQL}
+        `),
+
+        // 12. Mapa de locações por cidade (rentals do mês com city name/slug)
+        prisma.$queryRawUnsafe<any[]>(`
+          SELECT
+            r.city_id,
+            c.name AS city_name,
+            c.slug AS city_slug,
+            COUNT(*)::int AS total_rentals,
+            COUNT(*) FILTER (WHERE r.status = 'active')::int AS active_rentals
+          FROM rentals r
+          LEFT JOIN cities c ON c.id = r.city_id
+          WHERE r.start_date >= DATE_TRUNC('month', CURRENT_DATE)
+            AND r.city_id IS NOT NULL
+          ${franchiseeId ? `AND r.franchisee_id = '${franchiseeId}'` : ''}
+          ${effectiveCityId ? `AND r.city_id = '${effectiveCityId}'` : ''}
+          GROUP BY r.city_id, c.name, c.slug
+          ORDER BY total_rentals DESC
         `),
       ]);
 
@@ -500,11 +519,18 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
             semanal: Number(medias.media_semanal) || 0,
             mensal: Number(medias.media_mensal) || 0,
           },
+          mapaLocacoesCidades: mapaLocacoesResult.map((r: any) => ({
+            cityId: r.city_id,
+            cityName: r.city_name,
+            citySlug: r.city_slug,
+            totalRentals: Number(r.total_rentals),
+            activeRentals: Number(r.active_rentals),
+          })),
           motosOciosas30Dias: Number(kpis.ociosas_30d) || 0,
           franqueadosAtivos: Number(kpis.franqueados_ativos) || 0,
           _meta: {
             elapsed_ms: elapsed,
-            query_count: 12,
+            query_count: 13,
           },
         },
       });
