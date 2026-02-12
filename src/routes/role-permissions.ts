@@ -14,6 +14,7 @@ const permissionSchema = z.object({
   can_edit: z.boolean(),
   can_delete: z.boolean(),
   can_export: z.boolean(),
+  can_generate_boleto: z.boolean(),
 });
 
 const updateRolePermissionsSchema = z.object({
@@ -51,6 +52,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                     can_edit: { type: 'boolean' },
                     can_delete: { type: 'boolean' },
                     can_export: { type: 'boolean' },
+                    can_generate_boleto: { type: 'boolean' },
                   },
                 },
               },
@@ -77,6 +79,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
       can_edit: boolean;
       can_delete: boolean;
       can_export: boolean;
+      can_generate_boleto: boolean;
     }>>`
       SELECT
         rp.role,
@@ -86,7 +89,8 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
         rp.can_create,
         rp.can_edit,
         rp.can_delete,
-        rp.can_export
+        rp.can_export,
+        rp.can_generate_boleto
       FROM role_permissions rp
       JOIN screens s ON s.id = rp.screen_id
       WHERE s.is_active = true
@@ -148,6 +152,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                       can_edit: { type: 'boolean' },
                       can_delete: { type: 'boolean' },
                       can_export: { type: 'boolean' },
+                      can_generate_boleto: { type: 'boolean' },
                     },
                   },
                 },
@@ -182,6 +187,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
       can_edit: boolean;
       can_delete: boolean;
       can_export: boolean;
+      can_generate_boleto: boolean;
     }>>`
       SELECT
         s.id as screen_id,
@@ -191,7 +197,8 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
         COALESCE(rp.can_create, false) as can_create,
         COALESCE(rp.can_edit, false) as can_edit,
         COALESCE(rp.can_delete, false) as can_delete,
-        COALESCE(rp.can_export, false) as can_export
+        COALESCE(rp.can_export, false) as can_export,
+        COALESCE(rp.can_generate_boleto, false) as can_generate_boleto
       FROM screens s
       LEFT JOIN role_permissions rp ON s.id = rp.screen_id AND rp.role = ${role}
       WHERE s.is_active = true
@@ -233,7 +240,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
             type: 'array',
             items: {
               type: 'object',
-              required: ['screen_id', 'can_view', 'can_create', 'can_edit', 'can_delete', 'can_export'],
+              required: ['screen_id', 'can_view', 'can_create', 'can_edit', 'can_delete', 'can_export', 'can_generate_boleto'],
               properties: {
                 screen_id: { type: 'string' },
                 can_view: { type: 'boolean' },
@@ -241,6 +248,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                 can_edit: { type: 'boolean' },
                 can_delete: { type: 'boolean' },
                 can_export: { type: 'boolean' },
+                can_generate_boleto: { type: 'boolean' },
               },
             },
           },
@@ -283,14 +291,15 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
     await prisma.$transaction(async (tx) => {
       for (const perm of permissions) {
         await tx.$executeRaw`
-          INSERT INTO role_permissions (role, screen_id, can_view, can_create, can_edit, can_delete, can_export, updated_at)
-          VALUES (${role}, ${perm.screen_id}, ${perm.can_view}, ${perm.can_create}, ${perm.can_edit}, ${perm.can_delete}, ${perm.can_export}, NOW())
+          INSERT INTO role_permissions (role, screen_id, can_view, can_create, can_edit, can_delete, can_export, can_generate_boleto, updated_at)
+          VALUES (${role}, ${perm.screen_id}, ${perm.can_view}, ${perm.can_create}, ${perm.can_edit}, ${perm.can_delete}, ${perm.can_export}, ${perm.can_generate_boleto}, NOW())
           ON CONFLICT (role, screen_id) DO UPDATE SET
             can_view = ${perm.can_view},
             can_create = ${perm.can_create},
             can_edit = ${perm.can_edit},
             can_delete = ${perm.can_delete},
             can_export = ${perm.can_export},
+            can_generate_boleto = ${perm.can_generate_boleto},
             updated_at = NOW()
         `;
       }
@@ -343,6 +352,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                       can_edit: { type: 'boolean' },
                       can_delete: { type: 'boolean' },
                       can_export: { type: 'boolean' },
+                      can_generate_boleto: { type: 'boolean' },
                       is_override: { type: 'boolean' },
                     },
                   },
@@ -384,6 +394,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
       can_edit: boolean;
       can_delete: boolean;
       can_export: boolean;
+      can_generate_boleto: boolean;
       is_override: boolean;
     }>>`SELECT * FROM get_user_computed_permissions(${userId}::uuid)`;
 
@@ -431,6 +442,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                       can_edit: { type: 'boolean' },
                       can_delete: { type: 'boolean' },
                       can_export: { type: 'boolean' },
+                      can_generate_boleto: { type: 'boolean' },
                       is_override: { type: 'boolean' },
                     },
                   },
@@ -455,6 +467,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
       can_edit: boolean;
       can_delete: boolean;
       can_export: boolean;
+      can_generate_boleto: boolean;
       is_override: boolean;
     }>>`SELECT * FROM get_user_computed_permissions(${user.userId}::uuid)`;
 
@@ -502,6 +515,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
                 can_edit: { type: 'boolean', nullable: true },
                 can_delete: { type: 'boolean', nullable: true },
                 can_export: { type: 'boolean', nullable: true },
+                can_generate_boleto: { type: 'boolean', nullable: true },
               },
             },
           },
@@ -534,6 +548,7 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
         can_edit?: boolean | null;
         can_delete?: boolean | null;
         can_export?: boolean | null;
+        can_generate_boleto?: boolean | null;
       }>;
     };
 
@@ -555,7 +570,8 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
           override.can_create === null &&
           override.can_edit === null &&
           override.can_delete === null &&
-          override.can_export === null
+          override.can_export === null &&
+          override.can_generate_boleto === null
         ) {
           await tx.$executeRaw`
             DELETE FROM user_permission_overrides
@@ -563,14 +579,15 @@ const rolePermissionsRoutes: FastifyPluginAsync = async (app) => {
           `;
         } else {
           await tx.$executeRaw`
-            INSERT INTO user_permission_overrides (user_id, screen_id, can_view, can_create, can_edit, can_delete, can_export, granted_by, updated_at)
-            VALUES (${userId}::uuid, ${override.screen_id}, ${override.can_view}, ${override.can_create}, ${override.can_edit}, ${override.can_delete}, ${override.can_export}, ${currentUser.userId}::uuid, NOW())
+            INSERT INTO user_permission_overrides (user_id, screen_id, can_view, can_create, can_edit, can_delete, can_export, can_generate_boleto, granted_by, updated_at)
+            VALUES (${userId}::uuid, ${override.screen_id}, ${override.can_view}, ${override.can_create}, ${override.can_edit}, ${override.can_delete}, ${override.can_export}, ${override.can_generate_boleto}, ${currentUser.userId}::uuid, NOW())
             ON CONFLICT (user_id, screen_id) DO UPDATE SET
               can_view = ${override.can_view},
               can_create = ${override.can_create},
               can_edit = ${override.can_edit},
               can_delete = ${override.can_delete},
               can_export = ${override.can_export},
+              can_generate_boleto = ${override.can_generate_boleto},
               granted_by = ${currentUser.userId}::uuid,
               updated_at = NOW()
           `;
