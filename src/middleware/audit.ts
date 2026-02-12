@@ -50,6 +50,20 @@ export class AuditService {
         }
       }
 
+      const oldDataSafe = data.oldData ? JSON.parse(JSON.stringify(data.oldData)) : null;
+      const newDataSafe = data.newData ? JSON.parse(JSON.stringify(data.newData)) : null;
+
+      // Auto-computar changed_fields quando ambos old e new existem
+      let changedFields: string[] = [];
+      if (oldDataSafe && newDataSafe && typeof oldDataSafe === 'object' && typeof newDataSafe === 'object') {
+        const allKeys = new Set([...Object.keys(oldDataSafe), ...Object.keys(newDataSafe)]);
+        const sensitiveFields = ['password_hash', 'refresh_token', 'plugsign_token', 'asaas_token'];
+        changedFields = [...allKeys].filter(k => {
+          if (sensitiveFields.includes(k)) return false;
+          return JSON.stringify(oldDataSafe[k]) !== JSON.stringify(newDataSafe[k]);
+        });
+      }
+
       await prisma.auditLog.create({
         data: {
           user_id: data.userId,
@@ -61,8 +75,9 @@ export class AuditService {
           action: data.action,
           entity_type: data.entityType,
           entity_id: data.entityId,
-          old_data: data.oldData ? JSON.parse(JSON.stringify(data.oldData)) : null,
-          new_data: data.newData ? JSON.parse(JSON.stringify(data.newData)) : null,
+          old_data: oldDataSafe,
+          new_data: newDataSafe,
+          changed_fields: changedFields.length > 0 ? changedFields : [],
           ip_address: data.ipAddress,
           user_agent: data.userAgent,
         },

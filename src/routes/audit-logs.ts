@@ -33,6 +33,8 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
           start_date: { type: 'string' },
           end_date: { type: 'string' },
           user_id: { type: 'string', format: 'uuid' },
+          franchisee_id: { type: 'string', format: 'uuid' },
+          placa: { type: 'string' },
           action: { type: 'string' },
           entity_type: { type: 'string' },
         },
@@ -56,6 +58,8 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
       start_date,
       end_date,
       user_id,
+      franchisee_id,
+      placa,
       action,
       entity_type,
     } = request.query as {
@@ -64,6 +68,8 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
       start_date?: string;
       end_date?: string;
       user_id?: string;
+      franchisee_id?: string;
+      placa?: string;
       action?: string;
       entity_type?: string;
     };
@@ -76,10 +82,12 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
     let paramIdx = 1;
 
     // Default: últimos 7 dias se não tiver filtro de data
+    // Exceção: se buscar por placa ou franqueado, não limitar por data (traz todos)
+    const hasSpecificSearch = !!placa || !!franchisee_id;
     if (start_date) {
       conditions.push(`al.created_at >= $${paramIdx++}`);
       params.push(new Date(start_date));
-    } else {
+    } else if (!hasSpecificSearch) {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       conditions.push(`al.created_at >= $${paramIdx++}`);
@@ -104,6 +112,24 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
     if (entity_type) {
       conditions.push(`al.entity_type = $${paramIdx++}`);
       params.push(entity_type);
+    }
+
+    if (franchisee_id) {
+      conditions.push(`al.franchisee_id = $${paramIdx++}::uuid`);
+      params.push(franchisee_id);
+    }
+
+    if (placa) {
+      const placaParam = `%${placa.toUpperCase()}%`;
+      conditions.push(`(
+        UPPER(al.description) LIKE $${paramIdx}
+        OR UPPER(COALESCE(al.details::text, '')) LIKE $${paramIdx}
+        OR UPPER(COALESCE(al.old_data::text, '')) LIKE $${paramIdx}
+        OR UPPER(COALESCE(al.new_data::text, '')) LIKE $${paramIdx}
+        OR al.entity_id IN (SELECT m.id::text FROM motorcycles m WHERE UPPER(m.placa) LIKE $${paramIdx})
+      )`);
+      params.push(placaParam);
+      paramIdx++;
     }
 
     // Regional só vê logs da sua cidade
@@ -253,7 +279,7 @@ const auditLogsRoutes: FastifyPluginAsync = async (app) => {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: { type: 'object' },
+            data: { type: 'object', additionalProperties: true },
           },
         },
         404: errorResponseSchema,
