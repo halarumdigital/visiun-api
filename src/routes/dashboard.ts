@@ -165,11 +165,33 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           LIMIT 30
         `),
 
-        // 8. Crescimento da frota
+        // 8. Crescimento da frota (com filtro de cidade/franqueado)
         prisma.$queryRawUnsafe<any[]>(`
-          SELECT month_label, ano, mes_num, novas, cumulative_count
-          FROM vw_crescimento_frota
-          WHERE ano = EXTRACT(YEAR FROM CURRENT_DATE)::int
+          WITH monthly_new AS (
+            SELECT
+              DATE_TRUNC('month', created_at) AS mes,
+              COUNT(DISTINCT TRIM(placa)) AS novas
+            FROM motorcycles
+            WHERE created_at IS NOT NULL
+              ${effectiveCityId ? `AND city_id = '${effectiveCityId}'` : ''}
+              ${franchiseeId ? `AND franchisee_id = '${franchiseeId}'` : ''}
+            GROUP BY DATE_TRUNC('month', created_at)
+          ),
+          cumulative AS (
+            SELECT
+              mes,
+              novas,
+              SUM(novas) OVER (ORDER BY mes) AS cumulativo
+            FROM monthly_new
+          )
+          SELECT
+            TO_CHAR(mes, 'Mon') AS month_label,
+            EXTRACT(YEAR FROM mes)::int AS ano,
+            EXTRACT(MONTH FROM mes)::int AS mes_num,
+            novas::int,
+            cumulativo::int AS cumulative_count
+          FROM cumulative
+          WHERE EXTRACT(YEAR FROM mes)::int = EXTRACT(YEAR FROM CURRENT_DATE)::int
           ORDER BY mes_num
         `),
 
