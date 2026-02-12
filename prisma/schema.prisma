@@ -289,6 +289,7 @@ model Motorcycle {
   // Índices compostos para queries da página Locações
   @@index([city_id, status])
   @@index([city_id, created_at(sort: Desc)])
+  @@index([franchisee_id, status])
   @@map("motorcycles")
 }
 
@@ -493,6 +494,8 @@ model Rental {
   @@index([motorcycle_id])
   @@index([status])
   @@index([start_date])
+  @@index([attendant_id])
+  @@index([attendant_id, start_date(sort: Desc)])
   // Índices compostos para queries da página Locações
   @@index([city_id, start_date(sort: Desc)])
   @@index([franchisee_id, start_date(sort: Desc)])
@@ -1248,6 +1251,8 @@ model OrdemServico {
   @@index([city_id])
   @@index([data_previsao])
   @@index([status])
+  @@index([data_abertura])
+  @@index([city_id, data_abertura(sort: Desc)])
   @@map("ordens_servico")
 }
 
