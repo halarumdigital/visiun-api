@@ -725,6 +725,9 @@ export async function syncFranchiseeVehicles(
 
 /**
  * Buscar preview de sincronização (quantas motos novas, valores etc.)
+ * isFirstSync = true quando nenhum veículo está cadastrado no Beemon ainda
+ * Na primeira sync: sem cobrança (frota já paga pelo Marketplace)
+ * Nas syncs seguintes: cobra somente placas novas adicionadas
  */
 export async function checkSyncPreview(
   subscriptionId: string,
@@ -740,6 +743,7 @@ export async function checkSyncPreview(
   newValue: number;
   missingData: number;
   needsFleetSetup: boolean;
+  isFirstSync: boolean;
 }> {
   const ACTIVE_STATUS = ['disponivel', 'alugada', 'manutencao', 'reservada', 'relocada', 'active'];
 
@@ -783,8 +787,12 @@ export async function checkSyncPreview(
   const currentPlates = existingPlatesSet.size;
   const newPlatesCount = newMotos.length;
   const totalPlates = currentPlates + newPlatesCount;
+  const isFirstSync = currentPlates === 0;
+
+  // Na primeira sync: o valor já foi pago no Marketplace, sem cobrança adicional
+  // Nas syncs seguintes: valor atual + (novas placas × preço unitário)
   const currentValue = currentTotalValue || currentPlates * unitPrice;
-  const newValue = totalPlates * unitPrice;
+  const newValue = isFirstSync ? currentValue : totalPlates * unitPrice;
 
   return {
     newPlates: newPlatesCount,
@@ -795,5 +803,6 @@ export async function checkSyncPreview(
     newValue,
     missingData: 0,
     needsFleetSetup: false,
+    isFirstSync,
   };
 }

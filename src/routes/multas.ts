@@ -66,10 +66,16 @@ const multasRoutes: FastifyPluginAsync = async (app) => {
     if (ctx.isFranchisee()) {
       let franchiseeId = ctx.franchiseeId;
 
-      // Fallback: buscar franchisee pelo master_user_id
+      // Fallback: buscar franchisee pelo master_user_id ou user_id
       if (!franchiseeId) {
         const linkedFranchisee = await prisma.franchisee.findFirst({
-          where: { master_user_id: ctx.userId, status: 'active' },
+          where: {
+            OR: [
+              { master_user_id: ctx.userId },
+              { user_id: ctx.userId },
+            ],
+            status: 'active',
+          },
           select: { id: true },
         });
         franchiseeId = linkedFranchisee?.id;
@@ -440,6 +446,12 @@ const multasRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ success: false, error: 'Assinatura não encontrada' });
     }
 
+    // Verificar se é a primeira sincronização (nenhum veículo cadastrado ainda)
+    const existingVehiclesCount = await prisma.beemonVehicle.count({
+      where: { subscription_id, active: true },
+    });
+    const isFirstSync = existingVehiclesCount === 0;
+
     const result = await syncFranchiseeVehicles(
       subscription_id,
       subscription.franchisee_id,
@@ -455,13 +467,15 @@ const multasRoutes: FastifyPluginAsync = async (app) => {
       const newTotalPlates = currentCount + result.success;
       const newTotalValue = newTotalPlates * unitPrice;
 
+      // Sempre atualizar contagem no banco local
       await prisma.franchiseeSubscription.update({
         where: { id: subscription_id },
         data: { unit_count: newTotalPlates, total_value: newTotalValue },
       });
 
-      // Atualizar assinatura no Asaas se configurado
-      if (subscription.asaas_subscription_id && env.ASAAS_API_URL && env.ASAAS_API_KEY) {
+      // Atualizar valor no Asaas SOMENTE se NÃO é a primeira sync
+      // Na primeira sync a frota já foi paga pelo Marketplace
+      if (!isFirstSync && subscription.asaas_subscription_id && env.ASAAS_API_URL && env.ASAAS_API_KEY) {
         try {
           await fetch(`${env.ASAAS_API_URL}/subscriptions/${subscription.asaas_subscription_id}`, {
             method: 'PUT',
