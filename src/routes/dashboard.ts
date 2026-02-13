@@ -143,11 +143,19 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           ORDER BY dia
         `),
 
-        // 5. Movimentos de hoje
+        // 5. Movimentos de hoje (com nome do franqueado e cidade)
         prisma.$queryRawUnsafe<any[]>(`
-          SELECT tipo, city_id, franchisee_id, quantidade::int
-          FROM vw_movimentos_hoje
-          ${franchiseeId ? `WHERE franchisee_id = '${franchiseeId}'` : effectiveCityId ? `WHERE city_id = '${effectiveCityId}'` : ''}
+          SELECT
+            m.tipo,
+            m.city_id,
+            m.franchisee_id,
+            m.quantidade::int,
+            COALESCE(f.fantasy_name, f.company_name, m.franchisee_id::text) AS franqueado_name,
+            COALESCE(c.name, 'N/A') AS city_name
+          FROM vw_movimentos_hoje m
+          LEFT JOIN franchisees f ON f.id = m.franchisee_id
+          LEFT JOIN cities c ON c.id = m.city_id
+          ${franchiseeId ? `WHERE m.franchisee_id = '${franchiseeId}'` : effectiveCityId ? `WHERE m.city_id = '${effectiveCityId}'` : ''}
         `),
 
         // 6. Distribuição por cidade
