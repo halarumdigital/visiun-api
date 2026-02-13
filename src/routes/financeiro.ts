@@ -20,8 +20,8 @@ const financeiroResponseSchema = {
     pago: { type: 'boolean' },
     placa: { type: 'string', nullable: true },
     locatario: { type: 'string', nullable: true },
-    comprovante_url: { type: 'string', format: 'uri', nullable: true },
-    comprovante_url_2: { type: 'string', format: 'uri', nullable: true },
+    comprovante_url: { type: 'string', nullable: true },
+    comprovante_url_2: { type: 'string', nullable: true },
     franchisee_id: { type: 'string', format: 'uuid' },
     motorcycle_id: { type: 'string', format: 'uuid', nullable: true },
     categoria_id: { type: 'string', format: 'uuid', nullable: true },
@@ -77,8 +77,8 @@ const createFinanceiroSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
   descricao: z.string().min(1, 'Descrição é obrigatória'),
   pago: z.boolean().default(false),
-  comprovante_url: z.string().url().optional().nullable(),
-  comprovante_url_2: z.string().url().optional().nullable(),
+  comprovante_url: z.string().optional().nullable(),
+  comprovante_url_2: z.string().optional().nullable(),
 });
 
 const updateFinanceiroSchema = createFinanceiroSchema.partial();
@@ -285,8 +285,8 @@ const financeiroRoutes: FastifyPluginAsync = async (app) => {
           data: { type: 'string', format: 'date', description: 'Data do lançamento (YYYY-MM-DD)' },
           descricao: { type: 'string', minLength: 1, description: 'Descrição do lançamento' },
           pago: { type: 'boolean', default: false, description: 'Status de pagamento' },
-          comprovante_url: { type: 'string', format: 'uri', description: 'URL do comprovante' },
-          comprovante_url_2: { type: 'string', format: 'uri', description: 'URL do segundo comprovante' },
+          comprovante_url: { type: ['string', 'null'], description: 'URL do comprovante' },
+          comprovante_url_2: { type: ['string', 'null'], description: 'URL do segundo comprovante' },
         },
       },
       response: {
@@ -405,8 +405,8 @@ const financeiroRoutes: FastifyPluginAsync = async (app) => {
           data: { type: 'string', format: 'date' },
           descricao: { type: 'string', minLength: 1 },
           pago: { type: 'boolean' },
-          comprovante_url: { type: 'string', format: 'uri' },
-          comprovante_url_2: { type: 'string', format: 'uri' },
+          comprovante_url: { type: ['string', 'null'] },
+          comprovante_url_2: { type: ['string', 'null'] },
         },
       },
       response: {

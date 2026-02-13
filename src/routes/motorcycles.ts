@@ -837,6 +837,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
         type: 'object',
         properties: {
           city_id: { type: 'string', format: 'uuid', description: 'ID da cidade para filtrar' },
+          scope: { type: 'string', enum: ['city'], description: 'Escopo: city = franqueado vê motos da cidade (como regional)' },
         },
       },
       response: {
@@ -853,7 +854,7 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
     },
   }, async (request, reply) => {
     try {
-      const { city_id } = request.query as { city_id?: string };
+      const { city_id, scope } = request.query as { city_id?: string; scope?: string };
       const context = getContext(request);
 
       // Construir cláusulas WHERE dinâmicas baseadas no role
@@ -862,11 +863,12 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
       let paramIndex = 1;
 
       // Filtro de role (sem prefixo de alias - usado dentro da subquery)
-      if (context.isFranchisee() && context.franchiseeId) {
+      // scope=city: franqueado vê motos da cidade dele (mesma visão do regional)
+      if (context.isFranchisee() && context.franchiseeId && scope !== 'city') {
         conditions.push(`franchisee_id = $${paramIndex}::uuid`);
         params.push(context.franchiseeId);
         paramIndex++;
-      } else if (context.isRegional() && context.cityId) {
+      } else if ((context.isRegional() && context.cityId) || (context.isFranchisee() && scope === 'city' && context.cityId)) {
         conditions.push(`city_id = $${paramIndex}::uuid`);
         params.push(context.cityId);
         paramIndex++;
