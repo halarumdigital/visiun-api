@@ -242,9 +242,20 @@ const manutencoesRoutes: FastifyPluginAsync = async (app) => {
         tipo_manutencao: o.tipo_manutencao,
         km_atual: o.km_atual,
         descricao_problema: o.descricao_problema,
-        valor_total: o.valor_total ? Number(o.valor_total) : 0,
-        valor_pecas: o.valor_pecas ? Number(o.valor_pecas) : 0,
-        valor_servicos: o.valor_servicos ? Number(o.valor_servicos) : 0,
+        valor_total: (() => {
+          const calcServicos = o.servicos.reduce((sum, s) => sum + (Number(s.quantidade || 0) * Number(s.preco_unitario || 0)), 0);
+          const calcPecas = o.pecas.reduce((sum, p) => sum + (Number(p.quantidade || 0) * Number(p.preco_unitario || 0)), 0);
+          const calc = calcServicos + calcPecas;
+          return calc > 0 ? calc : (o.valor_total ? Number(o.valor_total) : 0);
+        })(),
+        valor_pecas: (() => {
+          const calc = o.pecas.reduce((sum, p) => sum + (Number(p.quantidade || 0) * Number(p.preco_unitario || 0)), 0);
+          return calc > 0 ? calc : (o.valor_pecas ? Number(o.valor_pecas) : 0);
+        })(),
+        valor_servicos: (() => {
+          const calc = o.servicos.reduce((sum, s) => sum + (Number(s.quantidade || 0) * Number(s.preco_unitario || 0)), 0);
+          return calc > 0 ? calc : (o.valor_servicos ? Number(o.valor_servicos) : 0);
+        })(),
         observacoes: o.observacoes,
         motorcycle: o.motorcycle ? {
           placa: o.motorcycle.placa,
