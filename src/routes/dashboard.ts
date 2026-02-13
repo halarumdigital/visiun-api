@@ -250,6 +250,22 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // Criar Map de franchisee_id → nome e cidade para lookups
+      const franchiseeNameMap = new Map<string, string>();
+      const franchiseeCityMap = new Map<string, string>();
+      for (const f of franqueadosRevenueResult) {
+        franchiseeNameMap.set(f.franchisee_id, f.franqueado_name || f.franchisee_id);
+      }
+      // Map city_id → nome da cidade
+      const cityNameMap = new Map<string, string>();
+      for (const d of distribuicaoCidadesResult) {
+        cityNameMap.set(d.city_id, d.cidade || 'N/A');
+      }
+      // Para cada franqueado, mapear a cidade
+      for (const f of franqueadosRevenueResult) {
+        franchiseeCityMap.set(f.franchisee_id, cityNameMap.get(f.city_id) || 'N/A');
+      }
+
       // Calcular alertas críticos
       const franquiasAbaixoMeta = franqueadosRevenueResult.filter((f: any) => Number(f.occupation_rate) < 75);
       const franquiasManutencaoAlta = franqueadosRevenueResult.filter((f: any) => Number(f.maintenance_rate) > 15);
@@ -313,9 +329,9 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           severidade: 'info',
           tipo: 'info',
           franquiasDetalhes: alugadasPorFranquia.map(a => ({
-            franqueadoName: a.franchisee_id,
+            franqueadoName: franchiseeNameMap.get(a.franchisee_id) || a.franchisee_id,
             franchiseeId: a.franchisee_id,
-            cityId: a.city_id,
+            cityName: franchiseeCityMap.get(a.franchisee_id) || cityNameMap.get(a.city_id) || 'N/A',
             motorcycleCount: a.quantidade,
             value: a.quantidade,
             meta: 0,
@@ -330,9 +346,9 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           severidade: 'info',
           tipo: 'info',
           franquiasDetalhes: recolhidasPorFranquia.map(r => ({
-            franqueadoName: r.franchisee_id,
+            franqueadoName: franchiseeNameMap.get(r.franchisee_id) || r.franchisee_id,
             franchiseeId: r.franchisee_id,
-            cityId: r.city_id,
+            cityName: franchiseeCityMap.get(r.franchisee_id) || cityNameMap.get(r.city_id) || 'N/A',
             motorcycleCount: r.quantidade,
             value: r.quantidade,
             meta: 0,
