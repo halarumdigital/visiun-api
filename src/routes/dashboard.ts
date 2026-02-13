@@ -165,35 +165,8 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           LIMIT 30
         `),
 
-        // 8. Crescimento da frota (com filtro de cidade/franqueado)
-        prisma.$queryRawUnsafe<any[]>(`
-          WITH monthly_new AS (
-            SELECT
-              DATE_TRUNC('month', created_at) AS mes,
-              COUNT(DISTINCT TRIM(placa)) AS novas
-            FROM motorcycles
-            WHERE created_at IS NOT NULL
-              ${effectiveCityId ? `AND city_id = '${effectiveCityId}'` : ''}
-              ${franchiseeId ? `AND franchisee_id = '${franchiseeId}'` : ''}
-            GROUP BY DATE_TRUNC('month', created_at)
-          ),
-          cumulative AS (
-            SELECT
-              mes,
-              novas,
-              SUM(novas) OVER (ORDER BY mes) AS cumulativo
-            FROM monthly_new
-          )
-          SELECT
-            TO_CHAR(mes, 'Mon') AS month_label,
-            EXTRACT(YEAR FROM mes)::int AS ano,
-            EXTRACT(MONTH FROM mes)::int AS mes_num,
-            novas::int,
-            cumulativo::int AS cumulative_count
-          FROM cumulative
-          WHERE EXTRACT(YEAR FROM mes)::int = EXTRACT(YEAR FROM CURRENT_DATE)::int
-          ORDER BY mes_num
-        `),
+        // 8. Placeholder - crescimento da frota agora usa total_operacional da query 11
+        prisma.$queryRawUnsafe<any[]>(`SELECT 1 AS _`),
 
         // 9. Manutenções de hoje (detalhado)
         prisma.$queryRawUnsafe<any[]>(`
@@ -429,10 +402,13 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         quantidade: Number(d.quantidade),
       }));
 
-      // Crescimento da frota
-      const baseGrowth = crescimentoFrotaResult.map((g: any) => ({
-        month: g.month_label,
-        cumulativeCount: Number(g.cumulative_count),
+      // Crescimento da frota - usa total_operacional atual como base
+      // Meses até o atual recebem totalOp (frota operacional real), futuros recebem 0 (projeção no frontend)
+      const mesesGrowth = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      const mesAtualGrowth = new Date().getMonth(); // 0-indexed
+      const baseGrowth = mesesGrowth.map((mes, i) => ({
+        month: mes,
+        cumulativeCount: i <= mesAtualGrowth ? totalOp : 0,
       }));
 
       // Manutenções de hoje formatadas
