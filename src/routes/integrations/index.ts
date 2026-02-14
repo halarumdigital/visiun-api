@@ -230,6 +230,24 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/plugsign-download/:documentKey', {
     preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Download de documento assinado via PlugSign (tenta variações de chave para caracteres confusos)',
+      tags: ['Integrações'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['documentKey'],
+        properties: {
+          documentKey: { type: 'string', description: 'Chave do documento no PlugSign' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          cityId: { type: 'string', format: 'uuid', description: 'ID da cidade (para master_br selecionar token)' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const { documentKey } = request.params as { documentKey: string };
 
@@ -348,6 +366,18 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/document-status/:documentKey', {
     preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Verificar status de assinatura de um documento (busca em contratos, comprovantes e distratos)',
+      tags: ['Integrações'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['documentKey'],
+        properties: {
+          documentKey: { type: 'string', description: 'Chave do documento (signature_request_id ou batch_id)' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const { documentKey } = request.params as { documentKey: string };
 
@@ -393,6 +423,24 @@ const integrationsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/plugsign-file-info/:requestId', {
     preHandler: [authMiddleware, rbac()],
+    schema: {
+      description: 'Buscar informações de um arquivo/request no PlugSign',
+      tags: ['Integrações'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['requestId'],
+        properties: {
+          requestId: { type: 'string', description: 'ID do request no PlugSign' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          cityId: { type: 'string', format: 'uuid', description: 'ID da cidade (para master_br selecionar token)' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const { requestId } = request.params as { requestId: string };
     const user = request.user;

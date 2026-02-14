@@ -16,6 +16,11 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/config', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin'] })],
+    schema: {
+      description: 'Buscar configuração do IA Agendamento',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request, reply) => {
     const config = await prisma.iaAgendamentoConfig.findFirst();
 
@@ -31,6 +36,25 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.put('/config', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin'] })],
+    schema: {
+      description: 'Criar ou atualizar configuração do IA Agendamento',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['production_url', 'evolution_url', 'evolution_token', 'openai_token', 'ai_model', 'agent_prompt'],
+        properties: {
+          production_url: { type: 'string' },
+          evolution_url: { type: 'string' },
+          evolution_token: { type: 'string' },
+          openai_token: { type: 'string' },
+          ai_model: { type: 'string' },
+          agent_prompt: { type: 'string' },
+          temperature: { type: 'number' },
+          max_tokens: { type: 'number' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const body = request.body as {
       production_url: string;
@@ -96,6 +120,11 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/instances', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Listar instâncias Evolution (WhatsApp)',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request, reply) => {
     const instances = await prisma.evolutionInstance.findMany({
       orderBy: { created_at: 'desc' },
@@ -113,6 +142,22 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post('/instances', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Criar nova instância Evolution (WhatsApp)',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['instance_name', 'phone_number'],
+        properties: {
+          instance_name: { type: 'string' },
+          phone_number: { type: 'string' },
+          qr_code: { type: 'string' },
+          instance_id: { type: 'string' },
+          apikey: { type: 'string' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const body = request.body as {
       instance_name: string;
@@ -155,6 +200,24 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.put<{ Params: { id: string } }>('/instances/:id/status', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Atualizar status de uma instância Evolution',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+      body: {
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: ['pending', 'connected', 'disconnected', 'error'] },
+          qr_code: { type: 'string' },
+        },
+      },
+    },
   }, async (request, reply) => {
     const { id } = request.params;
     const body = request.body as {
@@ -189,6 +252,16 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.delete<{ Params: { id: string } }>('/instances/:id', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Deletar instância Evolution',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+    },
   }, async (request, reply) => {
     const { id } = request.params;
 
@@ -220,6 +293,11 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/evolution-config', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Buscar configuração da Evolution API (URL e token)',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request, reply) => {
     const config = await prisma.iaAgendamentoConfig.findFirst({
       select: {
@@ -252,6 +330,11 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/agents', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Listar agentes IA',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request, reply) => {
     const agents = await prisma.iaAgent.findMany({
       orderBy: { created_at: 'desc' },
@@ -275,6 +358,22 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post('/agents', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Criar novo agente IA',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['name', 'prompt'],
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          prompt: { type: 'string' },
+          active: { type: 'boolean' },
+          instance_id: { type: 'string', nullable: true },
+        },
+      },
+    },
   }, async (request, reply) => {
     const body = request.body as {
       name: string;
@@ -314,6 +413,26 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.put<{ Params: { id: string } }>('/agents/:id', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Atualizar agente IA',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          prompt: { type: 'string' },
+          active: { type: 'boolean' },
+          instance_id: { type: 'string', nullable: true },
+        },
+      },
+    },
   }, async (request, reply) => {
     const { id } = request.params;
     const body = request.body as {
@@ -374,6 +493,16 @@ const iaAgendamentoRoutes: FastifyPluginAsync = async (app) => {
    */
   app.delete<{ Params: { id: string } }>('/agents/:id', {
     preHandler: [authMiddleware, rbac({ allowedRoles: ['master_br', 'admin', 'regional'] })],
+    schema: {
+      description: 'Deletar agente IA',
+      tags: ['IA Agendamento'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string' } },
+      },
+    },
   }, async (request, reply) => {
     const { id } = request.params;
 
