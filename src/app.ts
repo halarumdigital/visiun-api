@@ -9,6 +9,7 @@ import { env } from './config/env.js';
 import { prisma } from './config/database.js';
 import { logger } from './utils/logger.js';
 import { AppError, ValidationError } from './utils/errors.js';
+import { apiKeyMiddleware } from './middleware/apiKey.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
@@ -135,7 +136,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-API-Key'],
   });
 
   await app.register(helmet, {
@@ -152,6 +153,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       code: 'RATE_LIMIT_EXCEEDED',
     }),
   });
+
+  // Validação de API Key global
+  app.addHook('onRequest', apiKeyMiddleware);
 
   // Swagger/OpenAPI
   await app.register(swagger, {

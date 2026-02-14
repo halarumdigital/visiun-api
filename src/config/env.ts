@@ -54,6 +54,9 @@ const envSchema = z.object({
   // Sentry
   SENTRY_DSN: z.string().url().optional(),
 
+  // API Key - proteção de acesso à API
+  API_KEY: z.string().min(32),
+
   // Rate Limiting
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
