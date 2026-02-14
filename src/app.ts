@@ -51,6 +51,7 @@ import auditLogsRoutes from './routes/audit-logs.js';
 import multasRoutes from './routes/multas.js';
 import marketplaceRoutes from './routes/marketplace.js';
 import dashboardRoutes from './routes/dashboard.js';
+import iaAgendamentoRoutes from './routes/ia-agendamento.js';
 
 // Adicionar Prisma à declaração do Fastify
 declare module 'fastify' {
@@ -241,6 +242,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(multasRoutes, { prefix: '/api/multas' });
   await app.register(marketplaceRoutes, { prefix: '/api/marketplace' });
   await app.register(dashboardRoutes, { prefix: '/api/dashboard' });
+  await app.register(iaAgendamentoRoutes, { prefix: '/api/ia-agendamento' });
 
   // Error handler global
   app.setErrorHandler((error, request, reply) => {

@@ -44,7 +44,8 @@ class EmailService {
 
     const fromEmail = config.smtp_from_email || config.smtp_user;
     const fromName = config.smtp_from_name || 'Visiun';
-    const resetLink = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    const baseUrl = env.VITE_SYSTEM_BASE_URL || env.FRONTEND_URL.split(',')[0];
+    const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
 
     const html = `
 <!DOCTYPE html>

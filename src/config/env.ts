@@ -48,6 +48,9 @@ const envSchema = z.object({
   ASAAS_API_URL: z.string().url().optional(),
   ASAAS_API_KEY: z.string().optional(),
 
+  // URL base do sistema (usada para links em emails e webhooks)
+  VITE_SYSTEM_BASE_URL: z.string().url().optional(),
+
   // Sentry
   SENTRY_DSN: z.string().url().optional(),
 

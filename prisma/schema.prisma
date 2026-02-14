@@ -1032,19 +1032,57 @@ model CampaignResponse {
 
 // Tabela de Instâncias Evolution (WhatsApp)
 model EvolutionInstance {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  instance_name   String   @unique
-  instance_id     String?
-  status          String   @default("disconnected")
-  qr_code         String?
-  phone_number    String?
-  franchisee_id   String?  @db.Uuid
-  city_id         String?  @db.Uuid
-  webhook_url     String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  instance_name     String    @unique
+  instance_id       String?
+  status            String    @default("disconnected")
+  qr_code           String?
+  phone_number      String?
+  franchisee_id     String?   @db.Uuid
+  city_id           String?   @db.Uuid
+  webhook_url       String?
+  user_id           String    @db.Uuid
+  apikey            String?
+  last_connected_at DateTime? @db.Timestamptz
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   @@map("evolution_instances")
+}
+
+// Configuração do IA Agendamento
+model IaAgendamentoConfig {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  production_url      String
+  evolution_url       String
+  evolution_token     String
+  openai_token        String
+  ai_model            String
+  agent_prompt        String
+  temperature         Decimal?  @db.Decimal
+  max_tokens          Int?
+  evolution_instance  String?   @db.VarChar
+  agent_id            String?   @db.Uuid
+  created_by          String?   @db.Uuid
+  updated_by          String?   @db.Uuid
+  created_at          DateTime? @default(now()) @db.Timestamptz
+  updated_at          DateTime? @db.Timestamptz
+
+  @@map("ia_agendamento_config")
+}
+
+// Agentes IA
+model IaAgent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @db.VarChar
+  description String?
+  prompt      String
+  active      Boolean?  @default(true)
+  config      Json?
+  created_at  DateTime? @default(now()) @db.Timestamptz
+  updated_at  DateTime? @db.Timestamptz
+
+  @@map("ia_agents")
 }
 
 // Tabela de Conversas IA
