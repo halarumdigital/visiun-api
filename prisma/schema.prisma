@@ -1038,7 +1038,6 @@ model EvolutionInstance {
   status            String    @default("disconnected")
   qr_code           String?
   phone_number      String?
-  franchisee_id     String?   @db.Uuid
   city_id           String?   @db.Uuid
   webhook_url       String?
   user_id           String    @db.Uuid
