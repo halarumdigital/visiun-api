@@ -175,12 +175,30 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         // 8. Placeholder - crescimento da frota agora usa total_operacional da query 11
         prisma.$queryRawUnsafe<any[]>(`SELECT 1 AS _`),
 
-        // 9. Manutenções de hoje (detalhado)
-        prisma.$queryRawUnsafe<any[]>(`
+        // 9. Manutenções detalhadas (mês inteiro para franqueado, hoje para demais)
+        prisma.$queryRawUnsafe<any[]>(franchiseeId
+          ? `
+          SELECT
+            os.id, os.data_abertura, os.tipo_manutencao AS tipo, os.status,
+            os.valor_total::numeric, os.city_id, os.motorcycle_id,
+            m.placa, m.franchisee_id,
+            COALESCE(f.fantasy_name, f.company_name, 'N/A') AS franqueado,
+            COALESCE(c.name, 'N/A') AS city_name
+          FROM ordens_servico os
+          LEFT JOIN motorcycles m ON m.id = os.motorcycle_id
+          LEFT JOIN franchisees f ON f.id = m.franchisee_id
+          LEFT JOIN cities c ON c.id = COALESCE(os.city_id, f.city_id)
+          WHERE m.franchisee_id = '${franchiseeId}'
+            AND os.data_abertura >= DATE_TRUNC('month', CURRENT_DATE)
+            AND os.data_abertura < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+          ORDER BY os.data_abertura DESC
+          `
+          : `
           SELECT id, data_abertura, tipo, status, valor_total::numeric, city_id, motorcycle_id, placa, franchisee_id, franqueado, city_name
           FROM vw_manutencoes_hoje
-          ${franchiseeId ? `WHERE franchisee_id = '${franchiseeId}'` : effectiveCityId ? `WHERE city_id = '${effectiveCityId}'` : ''}
-        `),
+          ${effectiveCityId ? `WHERE city_id = '${effectiveCityId}'` : ''}
+          `
+        ),
 
         // 10. Receita mensal (rentals do mês)
         prisma.$queryRawUnsafe<any[]>(`
