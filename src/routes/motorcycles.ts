@@ -8,6 +8,13 @@ import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors.
 import { realtimeService } from '../websocket/index.js';
 import { getContext } from '../utils/context.js';
 
+// Helper: retorna a data se válida, ou null se inválida (evita RangeError no fast-json-stringify)
+function safeDate(date: any): Date | null {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  return !isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 3000 ? d : null;
+}
+
 // Swagger Schemas
 const motorcycleStatusEnum = ['active', 'alugada', 'relocada', 'manutencao', 'recolhida', 'indisponivel_rastreador', 'indisponivel_emplacamento', 'inadimplente', 'renegociado', 'furto_roubo'];
 
@@ -922,15 +929,15 @@ const motorcyclesRoutes: FastifyPluginAsync = async (app) => {
         codigo_cs: m.codigo_cs,
         tipo: m.tipo,
         valor_semanal: m.valor_semanal ? Number(m.valor_semanal) : null,
-        data_ultima_mov: m.data_ultima_mov,
-        data_criacao: m.data_criacao,
+        data_ultima_mov: safeDate(m.data_ultima_mov),
+        data_criacao: safeDate(m.data_criacao),
         city_id: m.city_id,
         franchisee_id: m.franchisee_id,
         doc_moto: m.doc_moto,
         doc_taxa_intermediacao: m.doc_taxa_intermediacao,
         observacoes: m.observacoes,
-        created_at: m.created_at,
-        updated_at: m.updated_at,
+        created_at: safeDate(m.created_at) || new Date(),
+        updated_at: safeDate(m.updated_at) || new Date(),
         city: m.city_id_rel ? { id: m.city_id_rel, name: m.city_name, slug: m.city_slug } : null,
         franchisee: m.franchisee_id_rel ? {
           id: m.franchisee_id_rel,
