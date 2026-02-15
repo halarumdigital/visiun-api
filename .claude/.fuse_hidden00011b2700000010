@@ -38,10 +38,7 @@
       "Bash(node_modules/.bin/tsc:*)",
       "Bash(npm run build:*)",
       "Bash(/home/gilliard/.nvm/versions/node/v22.21.1/bin/npm install @sentry/node --save --prefix /media/gilliard/Desenvolvimento1/LocAgora/Master-Brasil-API)",
-      "Bash(openssl rand:*)",
-      "Bash(npx:*)",
-      "Bash(npx -y ts-node -e:*)",
-      "Bash(/usr/bin/node:*)"
+      "Bash(openssl rand:*)"
     ]
   }
 }
