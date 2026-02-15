@@ -131,7 +131,6 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           SELECT attendant_id, nome, cidade, locacoes::int, posicao::int
           FROM vw_top_consultores_mes
           ${effectiveCityId ? `WHERE attendant_id IN (SELECT id FROM app_users WHERE city_id = '${effectiveCityId}')` : ''}
-          LIMIT 20
         `),
 
         // 4. Manutenções diárias do mês
