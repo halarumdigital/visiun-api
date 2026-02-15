@@ -140,15 +140,17 @@ DROP VIEW IF EXISTS vw_manutencoes_diarias_mes CASCADE;
 
 CREATE OR REPLACE VIEW vw_manutencoes_diarias_mes AS
 SELECT
-  DATE(data_abertura) AS dia,
-  TO_CHAR(data_abertura, 'DD/MM') AS dia_formatado,
-  city_id,
+  DATE(os.data_abertura) AS dia,
+  TO_CHAR(os.data_abertura, 'DD/MM') AS dia_formatado,
+  os.city_id,
+  m.franchisee_id,
   COUNT(*) AS volume,
-  COALESCE(SUM(valor_total), 0) AS receita
-FROM ordens_servico
-WHERE data_abertura >= DATE_TRUNC('month', CURRENT_DATE)
-  AND data_abertura < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
-GROUP BY DATE(data_abertura), TO_CHAR(data_abertura, 'DD/MM'), city_id
+  COALESCE(SUM(os.valor_total), 0) AS receita
+FROM ordens_servico os
+LEFT JOIN motorcycles m ON m.id = os.motorcycle_id
+WHERE os.data_abertura >= DATE_TRUNC('month', CURRENT_DATE)
+  AND os.data_abertura < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+GROUP BY DATE(os.data_abertura), TO_CHAR(os.data_abertura, 'DD/MM'), os.city_id, m.franchisee_id
 ORDER BY dia;
 
 

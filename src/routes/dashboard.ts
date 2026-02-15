@@ -137,7 +137,7 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         prisma.$queryRawUnsafe<any[]>(`
           SELECT dia, dia_formatado, SUM(volume)::int AS volume, SUM(receita)::numeric AS receita
           FROM vw_manutencoes_diarias_mes
-          ${effectiveCityId ? `WHERE city_id = '${effectiveCityId}'` : ''}
+          ${franchiseeId ? `WHERE franchisee_id = '${franchiseeId}'` : effectiveCityId ? `WHERE city_id = '${effectiveCityId}'` : ''}
           GROUP BY dia, dia_formatado
           ORDER BY dia
         `),
