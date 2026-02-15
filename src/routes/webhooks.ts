@@ -206,6 +206,137 @@ const webhooksRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
+   * POST /api/webhooks/asaas
+   * Webhook para eventos de pagamento do Asaas
+   */
+  app.post('/asaas', {
+    preHandler: [webhookRateLimit],
+    schema: {
+      description: 'Webhook para receber eventos de pagamento do Asaas',
+      tags: ['Webhooks'],
+      body: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          event: { type: 'string' },
+          payment: { type: 'object' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const payload = request.body as any;
+
+    logger.info({ event: payload.event, paymentId: payload.payment?.id }, 'Asaas webhook received');
+
+    const event = payload.event;
+    const payment = payload.payment;
+
+    if (!event || !payment) {
+      logger.warn('Asaas webhook: invalid payload - missing event or payment');
+      return reply.status(400).send({ success: false, message: 'Invalid payload' });
+    }
+
+    try {
+      // Buscar pagamento no banco pelo asaas_payment_id
+      const asaasPayment = await prisma.asaasPayment.findFirst({
+        where: { asaas_payment_id: payment.id },
+      });
+
+      if (!asaasPayment) {
+        logger.warn({ paymentId: payment.id }, 'Asaas webhook: payment not found');
+        // Logar evento mesmo assim
+        await prisma.asaasPaymentEvent.create({
+          data: {
+            event_type: event,
+            event_data: payload,
+            asaas_payment_external_id: payment.id,
+            webhook_id: payload.id || null,
+            processed: false,
+            error_message: 'Pagamento não encontrado no banco',
+          },
+        });
+        return reply.status(200).send({ success: true, message: 'Payment not found, event logged' });
+      }
+
+      // Mapear status do Asaas para status interno
+      const statusMap: Record<string, string> = {
+        'PAYMENT_CREATED': 'PENDING',
+        'PAYMENT_AWAITING_RISK_ANALYSIS': 'PENDING',
+        'PAYMENT_APPROVED_BY_RISK_ANALYSIS': 'PENDING',
+        'PAYMENT_PENDING': 'PENDING',
+        'PAYMENT_CONFIRMED': 'CONFIRMED',
+        'PAYMENT_RECEIVED': 'RECEIVED',
+        'PAYMENT_OVERDUE': 'OVERDUE',
+        'PAYMENT_REFUNDED': 'REFUNDED',
+        'PAYMENT_DELETED': 'CANCELLED',
+        'PAYMENT_RESTORED': 'PENDING',
+        'PAYMENT_REFUND_IN_PROGRESS': 'REFUNDED',
+        'PAYMENT_CHARGEBACK_REQUESTED': 'CANCELLED',
+        'PAYMENT_CHARGEBACK_DISPUTE': 'CANCELLED',
+        'PAYMENT_AWAITING_CHARGEBACK_REVERSAL': 'CANCELLED',
+        'PAYMENT_DUNNING_RECEIVED': 'RECEIVED',
+        'PAYMENT_DUNNING_REQUESTED': 'OVERDUE',
+      };
+
+      const newStatus = statusMap[event] || asaasPayment.status;
+
+      // Preparar dados de atualização
+      const updateData: any = { status: newStatus };
+
+      // Se foi pago, registrar data e valor
+      if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_DUNNING_RECEIVED') {
+        updateData.paid_at = new Date();
+        updateData.paid_value = payment.value;
+      }
+
+      // Atualizar pagamento no banco
+      await prisma.asaasPayment.update({
+        where: { id: asaasPayment.id },
+        data: updateData,
+      });
+
+      logger.info({ paymentId: asaasPayment.id, newStatus }, 'Asaas payment updated');
+
+      // Se foi pago, atualizar financeiro (se existir vínculo)
+      if ((event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_DUNNING_RECEIVED') && asaasPayment.financeiro_id) {
+        await prisma.financeiro.update({
+          where: { id: asaasPayment.financeiro_id },
+          data: { pago: true },
+        });
+        logger.info({ financeiroId: asaasPayment.financeiro_id }, 'Financeiro marked as paid');
+      }
+
+      // Logar evento
+      await prisma.asaasPaymentEvent.create({
+        data: {
+          asaas_payment_id: asaasPayment.id,
+          event_type: event,
+          event_data: payload,
+          asaas_payment_external_id: payment.id,
+          webhook_id: payload.id || null,
+          processed: true,
+        },
+      });
+
+      logger.info({ event, paymentId: payment.id }, 'Asaas webhook processed successfully');
+
+      return reply.status(200).send({ success: true, message: 'Event processed' });
+    } catch (error: any) {
+      logger.error({ error: error.message, event, paymentId: payment.id }, 'Asaas webhook processing error');
+      return reply.status(500).send({ success: false, message: error.message });
+    }
+  });
+
+  /**
    * POST /api/webhooks/csp-report
    * Endpoint para CSP violation reports
    */
