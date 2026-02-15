@@ -246,6 +246,17 @@ const webhooksRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      // Verificar se este webhook já foi processado (evitar duplicatas)
+      if (payload.id) {
+        const existingEvent = await prisma.asaasPaymentEvent.findFirst({
+          where: { webhook_id: payload.id },
+        });
+        if (existingEvent) {
+          logger.info({ webhookId: payload.id }, 'Asaas webhook already processed, skipping');
+          return reply.status(200).send({ success: true, message: 'Event already processed' });
+        }
+      }
+
       // Buscar pagamento no banco pelo asaas_payment_id
       const asaasPayment = await prisma.asaasPayment.findFirst({
         where: { asaas_payment_id: payment.id },
@@ -305,6 +316,16 @@ const webhooksRoutes: FastifyPluginAsync = async (app) => {
       });
 
       logger.info({ paymentId: asaasPayment.id, newStatus }, 'Asaas payment updated');
+
+      // Emitir evento realtime para atualizar frontend automaticamente
+      if (realtimeService && asaasPayment.franchisee_id) {
+        realtimeService.emitFinanceiroChange(asaasPayment.franchisee_id, {
+          type: 'UPDATE',
+          table: 'asaas_payments',
+          data: { ...asaasPayment, status: newStatus },
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Se foi pago, atualizar financeiro (se existir vínculo)
       if ((event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_DUNNING_RECEIVED') && asaasPayment.financeiro_id) {
